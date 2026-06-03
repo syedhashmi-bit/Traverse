@@ -320,6 +320,19 @@ def totp_setup():
     return render_template('totp_setup.html', secret=secret, qr_b64=qr_b64)
 
 
+# ── Internal: session check for nginx auth_request ────────────────────────────
+
+@auth_bp.route('/_internal/auth-check')
+def auth_check():
+    # 200 if the caller has a valid Traverse session, 401 otherwise. Used by
+    # nginx `auth_request` to gate reverse-proxied subpaths (e.g. /pihole/)
+    # behind the Traverse login. Never redirects — auth_request needs a clean
+    # status code, not a 302.
+    if session.get('logged_in'):
+        return '', 200
+    return '', 401
+
+
 # ── Logout ────────────────────────────────────────────────────────────────────
 
 @auth_bp.route('/logout', methods=['POST'])

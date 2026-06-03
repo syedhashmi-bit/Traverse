@@ -320,11 +320,20 @@ _pihole_stats_cache = {'ts': 0.0, 'data': None}
 _PIHOLE_STATS_TTL   = 55.0   # slightly under 60 s frontend poll
 
 
+def _pihole_url(path):
+    # PIHOLE_URL is the base of the Pi-hole web/API (may include a /pihole
+    # prefix when FTL's webserver.paths.webhome is changed for reverse-proxy
+    # mounting). Tolerate trailing slashes either way.
+    import os
+    base = os.getenv('PIHOLE_URL', 'http://10.9.0.1:8088').rstrip('/')
+    return f"{base}/api/{path.lstrip('/')}"
+
+
 def _pihole_logout(sid):
     """DELETE a Pi-hole v6 session to free a seat."""
     try:
         req = _ureq.Request(
-            'http://10.8.0.1:8080/api/auth',
+            _pihole_url('auth'),
             headers={'X-FTL-SID': sid},
             method='DELETE',
         )
@@ -349,7 +358,7 @@ def _pihole_auth():
     try:
         payload = _json.dumps({'password': password}).encode()
         req = _ureq.Request(
-            'http://10.8.0.1:8080/api/auth',
+            _pihole_url('auth'),
             data=payload,
             headers={'Content-Type': 'application/json'},
             method='POST',
@@ -377,7 +386,7 @@ def _fetch_pihole_summary():
         return None
     try:
         req = _ureq.Request(
-            'http://10.8.0.1:8080/api/stats/summary',
+            _pihole_url('stats/summary'),
             headers={'X-FTL-SID': sid},
         )
         with _ureq.urlopen(req, timeout=5) as resp:
@@ -402,7 +411,7 @@ def pihole_top_blocked():
         return jsonify({'ok': False, 'reason': 'auth failed'})
     try:
         req = _ureq.Request(
-            'http://10.8.0.1:8080/api/stats/top_blocked?count=10',
+            _pihole_url('stats/top_blocked?count=10'),
             headers={'X-FTL-SID': sid},
         )
         with _ureq.urlopen(req, timeout=4) as resp:
@@ -438,7 +447,7 @@ def pihole_peer_queries(vpn_ip):
         return jsonify({'ok': False, 'reason': 'auth failed'})
     try:
         req = _ureq.Request(
-            'http://10.8.0.1:8080/api/queries?client=' + _uparse.quote(vpn_ip, safe='') + '&length=100',
+            _pihole_url('queries?client=' + _uparse.quote(vpn_ip, safe='') + '&length=100'),
             headers={'X-FTL-SID': sid},
         )
         with _ureq.urlopen(req, timeout=4) as resp:
