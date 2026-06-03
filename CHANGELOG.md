@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.11.0] — 2026-06-03 (Portable Pi-hole integration + auth-gated reverse proxy)
+
+Shaken out of a VPS migration that exposed a hardcoded dependency. Two
+related changes that make the Pi-hole integration portable and let the
+Pi-hole admin UI (or any internal service) be mounted behind the
+Traverse login.
+
+### Fixed
+- **Pi-hole API URL is now env-driven.** Five call sites in `routes/api.py` hardcoded `http://10.8.0.1:8080/api/...`, so the dashboard's Pi-hole panel silently broke on any host where Pi-hole didn't live at that exact address. All five now route through a `_pihole_url()` helper that reads `PIHOLE_URL`, tolerates an optional `/pihole` web prefix (for reverse-proxy mounting), and is forgiving about trailing slashes.
+
+### Added
+- **`/_internal/auth-check` endpoint** — returns `200` when the caller has a valid Traverse session, `401` otherwise, and never redirects (so it's usable as an nginx `auth_request` target). This lets nginx gate reverse-proxied subpaths behind the existing dashboard login.
+- **Pi-hole admin mountable behind Traverse auth.** With FTL's `webserver.paths.webhome` set to a `/pihole/` prefix and an nginx `location /pihole/ { auth_request /_internal/auth-check; ... }`, the full Pi-hole UI can be reached at `https://<host>/pihole` — accessible without being on the VPN, yet invisible to anyone not authenticated against Traverse. Two-tier by design: Traverse session gate first, Pi-hole's own login second.
+
 ## [1.10.0] — 2026-05-19 (UI Polish — Seamless Transitions + Aesthetic Pass)
 
 A non-functional release: no behavioural or data-model changes, no new
