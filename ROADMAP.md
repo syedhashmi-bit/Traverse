@@ -36,8 +36,8 @@ release bump.
 
 - **Per-peer bandwidth quotas.** Daily / monthly caps with auto-disable
   when exceeded; status surfaced on the peer list and detail pages.
-- **IPv6 on `wg0`.** Dual-stack tunnel with NAT66 (or routed `/64`) so
-  clients get a v6 address through the VPS as well.
+- **IPv6 on the WireGuard interface.** Dual-stack tunnel with NAT66 (or routed
+  `/64`) so clients get a v6 address through the VPS as well.
 - **Mobile PWA polish pass.** Bottom nav is good; the wizard and the
   topology view still feel desktop-first.
 - **Schedule overview page.** v1.9.0 ships per-peer schedules edited on
