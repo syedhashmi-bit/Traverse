@@ -199,6 +199,17 @@ def migrate_db():
         """)
         conn.execute("INSERT OR IGNORE INTO speedtest_job (id, running) VALUES (1, 0)")
 
+        # Global (all-peers) traffic rate timeline for the dashboard 24h/7d
+        # chart. One row per poller tick (~60 s); rates are bytes/sec. Trimmed
+        # to 7 days by record_traffic_sample().
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS traffic_timeline (
+                ts      INTEGER PRIMARY KEY,
+                rx_rate REAL NOT NULL DEFAULT 0,
+                tx_rate REAL NOT NULL DEFAULT 0
+            )
+        """)
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS notification_settings (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -723,6 +734,31 @@ def get_peer_bandwidth_snapshots(peer_id, limit=61):
              LIMIT ?
         """, (peer_id, limit)).fetchall()
     return [dict(r) for r in reversed(rows)]
+
+
+# ── Global traffic timeline (dashboard 24h/7d chart) ──────────────────────────
+
+def record_traffic_sample(ts, rx_rate, tx_rate, retain_days=7):
+    """Append one global rate sample (bytes/sec) and trim beyond retain_days."""
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO traffic_timeline (ts, rx_rate, tx_rate) VALUES (?, ?, ?)",
+            (int(ts), float(rx_rate), float(tx_rate)),
+        )
+        conn.execute(
+            "DELETE FROM traffic_timeline WHERE ts < ?",
+            (int(ts) - retain_days * 86400,),
+        )
+
+
+def get_traffic_timeline(since_ts):
+    """Return [{ts, rx_rate, tx_rate}] at or after since_ts, oldest-first."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT ts, rx_rate, tx_rate FROM traffic_timeline WHERE ts >= ? ORDER BY ts ASC",
+            (int(since_ts),),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 # ── Speedtest results ─────────────────────────────────────────────────────────

@@ -31,13 +31,25 @@
       ⚡ Kill
     </button>
     {% endif %}
-    <button type="button" class="btn btn-secondary" data-modal-open="rotate-psk-modal"
-            title="Replace just the preshared key — keypair stays the same">
-      🔑 Rotate PSK
-    </button>
-    <button type="button" class="btn btn-secondary" data-modal-open="regen-modal">
-      ↺ Regenerate Config
-    </button>
+    <form method="POST" action="{{ url_for('peers.rotate_psk', peer_id=peer.id) }}"
+          class="danger" style="display:contents;"
+          data-confirm-title="Rotate preshared key?"
+          data-confirm-label="Yes, rotate PSK"
+          data-confirm="This replaces only the preshared key for {{ peer.name }} — the keypair stays the same. The existing config will not connect until the new PSK is on the client; download or re-scan the QR afterwards.">
+      <button type="submit" class="btn btn-secondary"
+              title="Replace just the preshared key — keypair stays the same">
+        🔑 Rotate PSK
+      </button>
+    </form>
+    <form method="POST" action="{{ url_for('peers.regenerate', peer_id=peer.id) }}"
+          class="danger" style="display:contents;"
+          data-confirm-title="Regenerate config?"
+          data-confirm-label="Yes, regenerate"
+          data-confirm="This generates a new keypair for {{ peer.name }}. The existing config and QR code will stop working immediately — make sure you download the new config afterwards.">
+      <button type="submit" class="btn btn-secondary">
+        ↺ Regenerate Config
+      </button>
+    </form>
   </div>
 </div>
 
@@ -102,9 +114,9 @@
           <div class="detail-value">
             {% set tm = peer.tunnel_mode or 'full' %}
             {% if tm == 'vpn_only' %}
-              <span class="badge" style="background:rgba(34,211,238,.15); color:#22d3ee; border:1px solid rgba(34,211,238,.3);">VPN Only</span>
+              <span class="badge badge-cyan">VPN Only</span>
             {% elif tm == 'split' %}
-              <span class="badge" style="background:rgba(251,191,36,.15); color:#fbbf24; border:1px solid rgba(251,191,36,.3);">Split Tunnel</span>
+              <span class="badge badge-amber">Split Tunnel</span>
             {% else %}
               <span class="badge badge-success">Full Tunnel</span>
             {% endif %}
@@ -424,40 +436,20 @@
               {{ 'Save schedule' if not schedule else 'Update schedule' }}
             </button>
             {% if schedule %}
-            <button type="button" class="btn btn-secondary" data-modal-open="schedule-delete-modal">
-              Remove schedule
-            </button>
+            <form method="POST" action="{{ url_for('peers.schedule_delete', peer_id=peer.id) }}"
+                  class="danger" style="display:contents;"
+                  data-confirm-title="Remove schedule?"
+                  data-confirm-label="Yes, remove"
+                  data-confirm="The schedule for {{ peer.name }} will be deleted. The peer's current enabled/disabled state stays as it is — you can toggle it manually afterwards.">
+              <button type="submit" class="btn btn-secondary">Remove schedule</button>
+            </form>
             {% endif %}
           </div>
         </form>
       </div>
     </div>
 
-    {% if schedule %}
-    <div id="schedule-delete-modal"
-         style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6);
-                z-index:500; align-items:center; justify-content:center; backdrop-filter:blur(3px);">
-      <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
-                  padding:28px; max-width:440px; width:90%; margin:0 16px;">
-        <div style="font-size:1rem; font-weight:700; color:var(--text); margin-bottom:10px;">
-          Remove schedule?
-        </div>
-        <div style="font-size:0.875rem; color:var(--text-muted); margin-bottom:20px; line-height:1.6;">
-          The schedule for <strong>{{ peer.name }}</strong> will be deleted.
-          The peer's current enabled/disabled state stays as it is — you can
-          toggle it manually afterwards.
-        </div>
-        <div class="action-bar">
-          <form method="POST" action="{{ url_for('peers.schedule_delete', peer_id=peer.id) }}">
-            <button type="submit" class="btn btn-danger">Yes, remove</button>
-          </form>
-          <button type="button" class="btn btn-secondary" data-modal-close="schedule-delete-modal">
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-    {% endif %}
+    <!-- schedule removal is now an inline data-confirm form (see action bar above) -->
 
     <!-- Connection History -->
     <div class="card">
@@ -644,46 +636,7 @@
   </div>
 </div>
 
-<!-- Regenerate modal -->
-<div id="regen-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6);
-     z-index:500; align-items:center; justify-content:center; backdrop-filter:blur(3px);">
-  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
-              padding:28px; max-width:420px; width:90%; margin:0 16px;">
-    <div style="font-size:1rem; font-weight:700; color:var(--text); margin-bottom:10px;">Regenerate Config</div>
-    <div style="font-size:0.875rem; color:var(--text-muted); margin-bottom:20px; line-height:1.6;">
-      This will generate a new keypair for <strong>{{ peer.name }}</strong>.<br>
-      The existing config and QR code will <strong style="color:var(--danger);">stop working immediately</strong>.
-      Make sure you download the new config afterwards.
-    </div>
-    <div class="action-bar">
-      <form method="POST" action="{{ url_for('peers.regenerate', peer_id=peer.id) }}">
-        <button type="submit" class="btn btn-danger">Yes, regenerate</button>
-      </form>
-      <button type="button" class="btn btn-secondary" data-modal-close="regen-modal">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- Rotate PSK modal -->
-<div id="rotate-psk-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6);
-     z-index:500; align-items:center; justify-content:center; backdrop-filter:blur(3px);">
-  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
-              padding:28px; max-width:440px; width:90%; margin:0 16px;">
-    <div style="font-size:1rem; font-weight:700; color:var(--text); margin-bottom:10px;">Rotate Preshared Key</div>
-    <div style="font-size:0.875rem; color:var(--text-muted); margin-bottom:20px; line-height:1.6;">
-      This replaces only the preshared key for <strong>{{ peer.name }}</strong> — the keypair
-      stays the same, so the peer's identity on the tunnel is unchanged.<br><br>
-      The existing config will <strong style="color:var(--warning);">stop connecting until
-      the new PSK is on the client</strong>. Download or re-scan the QR afterwards.
-    </div>
-    <div class="action-bar">
-      <form method="POST" action="{{ url_for('peers.rotate_psk', peer_id=peer.id) }}">
-        <button type="submit" class="btn btn-warning">Yes, rotate PSK</button>
-      </form>
-      <button type="button" class="btn btn-secondary" data-modal-close="rotate-psk-modal">Cancel</button>
-    </div>
-  </div>
-</div>
+<!-- regenerate + rotate-psk are now inline data-confirm forms (see action bar above) -->
 
 {% if pihole_enabled %}
 <!-- Pi-hole DNS Query Log -->

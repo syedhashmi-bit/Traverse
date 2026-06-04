@@ -421,24 +421,45 @@ document.addEventListener('DOMContentLoaded', () => {
       overlay.querySelector('.tv-modal-cancel').textContent = no;
       overlay.querySelector('.tv-modal-confirm').textContent = yes;
 
+      const prevFocus  = document.activeElement;
+      const cancelBtn  = overlay.querySelector('.tv-modal-cancel');
+      const confirmBtn = overlay.querySelector('.tv-modal-confirm');
+      const inertTargets = [];
+
       function cleanup(result) {
         document.removeEventListener('keydown', onKey);
+        inertTargets.forEach(el => { el.inert = false; });
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        // Restore focus to whatever opened the dialog (keyboard a11y).
+        if (prevFocus && typeof prevFocus.focus === 'function') {
+          try { prevFocus.focus(); } catch (_) {}
+        }
         resolve(result);
       }
       function onKey(e) {
-        if (e.key === 'Escape') cleanup(false);
-        else if (e.key === 'Enter') cleanup(true);
+        if (e.key === 'Escape') { cleanup(false); return; }
+        if (e.key === 'Enter')  { cleanup(true);  return; }
+        if (e.key === 'Tab') {
+          // Trap focus between the two buttons so Tab can't escape the dialog.
+          e.preventDefault();
+          (document.activeElement === confirmBtn ? cancelBtn : confirmBtn).focus();
+        }
       }
 
-      overlay.querySelector('.tv-modal-cancel').addEventListener('click', () => cleanup(false));
-      overlay.querySelector('.tv-modal-confirm').addEventListener('click', () => cleanup(true));
+      cancelBtn.addEventListener('click', () => cleanup(false));
+      confirmBtn.addEventListener('click', () => cleanup(true));
       overlay.addEventListener('click', e => { if (e.target === overlay) cleanup(false); });
       document.addEventListener('keydown', onKey);
 
       document.body.appendChild(overlay);
-      // Focus the confirm button shortly so Enter works
-      setTimeout(() => overlay.querySelector('.tv-modal-confirm').focus(), 50);
+      // Make the rest of the page inert while the dialog is open.
+      if ('inert' in HTMLElement.prototype) {
+        Array.prototype.forEach.call(document.body.children, function (ch) {
+          if (ch !== overlay && !ch.inert) { ch.inert = true; inertTargets.push(ch); }
+        });
+      }
+      // Focus the confirm button shortly so Enter works and focus is inside.
+      setTimeout(() => confirmBtn.focus(), 50);
     });
   };
 
@@ -817,7 +838,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function animate(el, target) {
     const start = performance.now();
-    const dur = 700;
+    // Magnitude-aware duration: small counts settle fast (~420ms for single
+    // digits), large ones feel deliberate, capped at 1100ms for 6-figure values.
+    const mag = Math.log10(Math.max(2, Math.abs(target)));
+    const dur = Math.min(1100, Math.max(350, 350 + mag * 220));
     function tick(now) {
       const t = Math.min(1, (now - start) / dur);
       // ease-out cubic

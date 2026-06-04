@@ -146,7 +146,11 @@
           <span class="chart-stat-grp"><span class="chart-lbl">PEAK</span>&thinsp;<span class="chart-val" id="ch-rx-peak" style="color:#22d3ee; opacity:0.7;">–</span><span style="color:var(--text-dim);">↓</span>&thinsp;<span class="chart-val" id="ch-tx-peak" style="color:#7c6af7; opacity:0.7;">–</span><span style="color:var(--text-dim);">↑</span></span>
           <span class="noc-sep-sm">│</span>
           <span class="chart-stat-grp"><span class="chart-lbl">AVG</span>&thinsp;<span class="chart-val" id="ch-rx-avg" style="color:var(--text-muted);">–</span><span style="color:var(--text-dim);">↓</span>&thinsp;<span class="chart-val" id="ch-tx-avg" style="color:var(--text-muted);">–</span><span style="color:var(--text-dim);">↑</span></span>
-          <span style="margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--text-dim); opacity:0.5; letter-spacing:0.05em; flex-shrink:0;">15 MIN</span>
+          <span class="chart-range-toggle" id="chart-range-toggle" style="margin-left:auto; flex-shrink:0;">
+            <button type="button" class="chart-range-btn active" data-range="live">15 MIN</button>
+            <button type="button" class="chart-range-btn" data-range="24h">24 H</button>
+            <button type="button" class="chart-range-btn" data-range="7d">7 D</button>
+          </span>
           <span class="chart-live-dot" id="chart-live-dot">● LIVE</span>
         </div>
         <div class="chart-canvas-wrap" style="height:192px; padding:6px 12px 4px;">
@@ -467,30 +471,7 @@
           }
         }
 
-        /* chart */
-        lineChart.data.labels           = d.history.map(h => fmtTime(h.ts));
-        lineChart.data.datasets[0].data = d.history.map(h => h.rx_rate);
-        lineChart.data.datasets[1].data = d.history.map(h => h.tx_rate);
-        lineChart.update();
-
-        /* chart header stats */
-        if (d.history && d.history.length > 0) {
-          const rxVals = d.history.map(h => h.rx_rate);
-          const txVals = d.history.map(h => h.tx_rate);
-          const rxNow  = rxVals[rxVals.length - 1] || 0;
-          const txNow  = txVals[txVals.length - 1] || 0;
-          const rxPeak = Math.max(...rxVals);
-          const txPeak = Math.max(...txVals);
-          const rxAvg  = rxVals.reduce((a, b) => a + b, 0) / rxVals.length;
-          const txAvg  = txVals.reduce((a, b) => a + b, 0) / txVals.length;
-          const g = id => document.getElementById(id);
-          if (g('ch-rx-now'))  g('ch-rx-now').textContent  = fmtRate(rxNow);
-          if (g('ch-tx-now'))  g('ch-tx-now').textContent  = fmtRate(txNow);
-          if (g('ch-rx-peak')) g('ch-rx-peak').textContent = fmtRate(rxPeak);
-          if (g('ch-tx-peak')) g('ch-tx-peak').textContent = fmtRate(txPeak);
-          if (g('ch-rx-avg'))  g('ch-rx-avg').textContent  = fmtRate(rxAvg);
-          if (g('ch-tx-avg'))  g('ch-tx-avg').textContent  = fmtRate(txAvg);
-        }
+        /* (chart is decoupled — see the 15s range-aware controller below) */
 
         /* peer rows */
         d.peers.forEach(p => {
@@ -512,6 +493,56 @@
 
   refresh();
   setInterval(() => { if (!window._dashPaused) refresh(); }, INTERVAL);
+
+  /* ── Traffic chart: range toggle (15min/24h/7d) + 15s decoupled poll ── */
+  let chartRange = 'live';
+  const CHART_INTERVAL = 15000;
+
+  function fmtAxisTime(ts, range) {
+    const dt = new Date(ts * 1000);
+    if (range === 'live') return dt.toLocaleTimeString([], {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    if (range === '24h')  return dt.toLocaleTimeString([], {hour12:false, hour:'2-digit', minute:'2-digit'});
+    return dt.toLocaleDateString([], {weekday:'short'}) + ' ' +
+           dt.toLocaleTimeString([], {hour12:false, hour:'2-digit', minute:'2-digit'});
+  }
+
+  function refreshChart() {
+    fetch('/api/traffic-history?range=' + chartRange)
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .then(d => {
+        const h = d.history || [];
+        lineChart.data.labels           = h.map(p => fmtAxisTime(p.ts, chartRange));
+        lineChart.data.datasets[0].data = h.map(p => p.rx_rate);
+        lineChart.data.datasets[1].data = h.map(p => p.tx_rate);
+        lineChart.update();
+        const g = id => document.getElementById(id);
+        const setv = (id, v) => { const e = g(id); if (e) e.textContent = fmtRate(v); };
+        if (h.length) {
+          const rx = h.map(p => p.rx_rate), tx = h.map(p => p.tx_rate);
+          setv('ch-rx-now', rx[rx.length-1] || 0);  setv('ch-tx-now', tx[tx.length-1] || 0);
+          setv('ch-rx-peak', Math.max.apply(null, rx)); setv('ch-tx-peak', Math.max.apply(null, tx));
+          setv('ch-rx-avg', rx.reduce((a,b)=>a+b,0)/rx.length); setv('ch-tx-avg', tx.reduce((a,b)=>a+b,0)/tx.length);
+        } else {
+          ['ch-rx-now','ch-tx-now','ch-rx-peak','ch-tx-peak','ch-rx-avg','ch-tx-avg']
+            .forEach(id => { const e = g(id); if (e) e.textContent = '–'; });
+        }
+      })
+      .catch(() => {});
+  }
+
+  document.querySelectorAll('.chart-range-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.range === chartRange) return;
+      chartRange = btn.dataset.range;
+      document.querySelectorAll('.chart-range-btn').forEach(b => b.classList.toggle('active', b === btn));
+      const live = document.getElementById('chart-live-dot');
+      if (live) live.style.display = (chartRange === 'live') ? '' : 'none';
+      refreshChart();
+    });
+  });
+
+  refreshChart();
+  setInterval(() => { if (!window._dashPaused) refreshChart(); }, CHART_INTERVAL);
 })();
 
 /* ── Pause / resume controller ───────────────────────────── */

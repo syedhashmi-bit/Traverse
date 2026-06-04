@@ -1,5 +1,106 @@
 # Changelog
 
+## [1.13.0] — 2026-06-04 (Traffic chart: 24h / 7-day history + lighter refresh)
+
+The dashboard traffic chart can now show longer trends, and the chart polls
+less aggressively to reduce load on the (2 GB) VPS.
+
+### Added
+- **Range toggle on the traffic chart — `15 MIN` / `24 H` / `7 D`.** The live
+  15-minute view is unchanged; the two new ranges show persisted
+  traffic-rate trends that survive restarts.
+- **Persisted global traffic timeline.** The 60-second poller now records the
+  all-peers RX/TX rate (bytes/sec) to a new `traffic_timeline` table, retained
+  for 7 days. Counter resets (wg restart / peer removal) are clamped to 0.
+- **`GET /api/traffic-history?range=live|24h|7d`** — `live` serves the in-memory
+  15-min deque (1 s resolution); `24h` is bucket-averaged to 10-min points
+  (~144), `7d` to 1-hour points (~168), so the chart stays readable.
+
+### Changed
+- **The traffic chart now refreshes every 15 s** (down from 1 s) and is
+  decoupled from the main stats poll. The stat cards, live speed numbers, and
+  peer table still update every 1 s — only the chart slowed down.
+
+### Implementation
+- `database.py` — `traffic_timeline` table + `record_traffic_sample` (7-day
+  trim) + `get_traffic_timeline`.
+- `alerts.py` — poller sums per-peer totals, computes the global rate from the
+  previous tick, records a sample each tick.
+- `routes/api.py` — `/api/traffic-history` with per-range bucketing.
+- `templates/dashboard.html` — range-toggle buttons; the chart moved to its own
+  15 s `/api/traffic-history` poller (range-aware time axis, NOW/PEAK/AVG over
+  the selected window); removed from the 1 s `/api/stats` handler.
+- `static/css/style.css` — `.chart-range-toggle` segmented pills.
+
+### Notes
+- `24h` / `7d` fill in over time — the first points appear within ~2 minutes,
+  a full day after 24 h, a full week after 7 days.
+
+### Verified
+- 175 tests pass; endpoint returns all three ranges; poller writes samples
+  (confirmed 60 s apart); inline JS lints clean; headless screenshot confirms
+  the toggle renders.
+
+## [1.12.0] — 2026-06-04 (Sleek polish + restructure pass)
+
+A refinement pass on an already-mature UI — consistency, legibility, a11y, and
+touch ergonomics. No behavioural or data-model changes. All CSS is append-only
+(source order wins, per the longstanding convention).
+
+### Foundation
+- **Spacing + radius scale tokens** (`--space-1..6`, `--r-xs..pill`) added to
+  `:root`, aliasing the existing values so nothing shifts — a base for
+  consistent rhythm in new rules.
+- **Form states** — inputs/selects/textareas now have proper `:disabled`
+  (muted, `not-allowed`) and invalid styling (danger-tinted ring). Invalid is
+  scoped to `:user-invalid` / `[aria-invalid]` so pristine create/wizard forms
+  never flag red on load.
+- **Light-theme gap fills** — stat-card icon backgrounds, flash-message text,
+  `.code-block` colour, and the Leaflet map background now have light-theme
+  overrides (scoped to `.theme-light`; dark theme unchanged).
+
+### Dashboard
+- **NOC bars** read more clearly — labels lifted from `--text-dim` to
+  `--text-muted`, a touch more vertical air, and the `│` glyph separators
+  replaced with soft gradient hairlines (desktop).
+- **Count-up** now scales its duration with magnitude — small counts settle
+  fast (~420 ms), six-figure values animate deliberately (capped 1100 ms),
+  instead of a flat 700 ms for everything.
+
+### Consistency
+- **Tunnel-mode badges** (VPN Only / Split) promoted from duplicated inline
+  styles in `peers/list` + `peers/detail` to reusable `.badge-cyan` /
+  `.badge-amber` classes (identical look, single source of truth).
+
+### Accessibility & modals
+- **`confirmDialog` hardened** — focus is trapped between the dialog buttons,
+  restored to the trigger on close, and the rest of the page is set `inert`
+  while open.
+- **Peer-detail modals consolidated** — the hand-rolled Regenerate / Rotate-PSK
+  / Remove-schedule modals are now inline `data-confirm` forms using the shared
+  (now-hardened) confirm dialog, so they inherit the focus-trap a11y and drop
+  ~60 lines of bespoke markup.
+
+### Touch / mobile
+- **Topbar icon buttons** (help / theme / sound / sign-out) get a 44×44 hit box
+  on touch devices (`pointer: coarse`).
+- **Peers table scroll affordance** — soft edge shadows reveal when the
+  horizontally-scrollable table has more columns off-screen.
+
+### Files
+```
+static/css/style.css   (~110 lines appended)
+static/js/app.js        (count-up duration; confirmDialog focus-trap/inert)
+templates/dashboard.html (NOC — no glyph change needed; CSS-only separators)
+templates/peers/list.html, peers/detail.html (badge classes; modal→data-confirm)
+VERSION → 1.12.0
+```
+
+### Verified
+- 175 tests pass; CSS brace-balanced; all routes render 200; service restarts clean.
+- Headless-Chromium screenshots (login + authed dashboard/detail/peers via a
+  base-href trick — Playwright/CDP still won't run on this box) confirm layout.
+
 ## [1.11.1] — 2026-06-04 (Post-migration fixes — VPN, Pi-hole, speedtest, stale refs)
 
 The VPS was migrated to a new host: WireGuard server moved from `wg0`/`10.8.0.0/24`/`51820`

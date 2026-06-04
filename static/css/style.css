@@ -3837,3 +3837,150 @@ thead th::after {
 }
 
 
+/* ════════════════════════════════════════════════════════════════════════
+   v1.12.0 — Sleek polish + restructure pass
+   Append-only (source order wins). Mirrors existing token / focus-ring /
+   hairline patterns. No earlier rules edited.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── A1. Spacing + radius scale tokens (additive; alias existing) ───────── */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --r-xs:   4px;
+  --r-sm:   6px;
+  --r-md:   var(--radius);
+  --r-lg:   var(--radius-lg);
+  --r-pill: 999px;
+}
+
+/* ── A2. Form states — disabled + invalid (were missing entirely) ──────── */
+.form-input:disabled, .form-select:disabled, .form-textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--surface-3);
+}
+.btn:disabled, .btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+/* :user-invalid only fires AFTER user interaction, so pristine create/wizard
+   forms never flag red on load. [aria-invalid] covers explicit JS-set state. */
+.form-input:user-invalid, .form-select:user-invalid, .form-textarea:user-invalid,
+.form-input[aria-invalid="true"], .form-select[aria-invalid="true"], .form-textarea[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.form-input:user-invalid:focus, .form-select:user-invalid:focus, .form-textarea:user-invalid:focus,
+.form-input[aria-invalid="true"]:focus, .form-select[aria-invalid="true"]:focus, .form-textarea[aria-invalid="true"]:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 24%, transparent);
+}
+
+/* ── A3. Light-theme gap fills (scoped to .theme-light; dark unaffected) ── */
+body.theme-light .stat-card-icon.purple { background: rgba(124,106,247,0.12); }
+body.theme-light .stat-card-icon.green  { background: rgba(16,185,129,0.12); }
+body.theme-light .stat-card-icon.blue   { background: rgba(59,130,246,0.12); }
+body.theme-light .stat-card-icon.orange { background: rgba(245,158,11,0.14); }
+body.theme-light .stat-card-icon.red    { background: rgba(239,68,68,0.12); }
+body.theme-light .stat-card-icon.teal   { background: rgba(20,184,166,0.12); }
+body.theme-light .flash-success { color: #047857; }
+body.theme-light .flash-error   { color: #b91c1c; }
+body.theme-light .flash-warning { color: #b45309; }
+body.theme-light .flash-info    { color: #1d4ed8; }
+body.theme-light .code-block    { color: #0f766e; }
+body.theme-light .leaflet-container { background: #dfe3ec !important; }
+
+/* ── B1. NOC bar legibility — labels readable, a touch more air ─────────── */
+.noc-lbl { color: var(--text-muted); }
+.noc-bar { gap: 9px; }
+
+/* ── B2. NOC separators: │ glyphs → soft vertical hairlines (desktop) ───── */
+@media (min-width: 769px) {
+  /* a touch more vertical air — vertical-only, so no horizontal overflow */
+  .noc-bar, .noc-health-bar, .noc-pihole-bar {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .noc-sep {
+    color: transparent;
+    font-size: 0;
+    width: 1px;
+    height: 13px;
+    padding: 0;
+    margin: 0 4px;
+    display: inline-block;
+    vertical-align: middle;
+    background: linear-gradient(180deg, transparent, var(--border) 28%, var(--border) 72%, transparent);
+  }
+}
+
+/* ── C. Tunnel-mode badges → reusable classes (were duplicated inline in
+   peers/list + peers/detail). Styles mirror the originals exactly. ──────── */
+.badge-cyan  { background: rgba(34,211,238,.15); color: #22d3ee; border: 1px solid rgba(34,211,238,.30); }
+.badge-amber { background: rgba(251,191,36,.15); color: #fbbf24; border: 1px solid rgba(251,191,36,.30); }
+body.theme-light .badge-cyan  { color: #0e7490; background: rgba(34,211,238,.16); }
+body.theme-light .badge-amber { color: #b45309; background: rgba(251,191,36,.20); }
+
+/* ── E1. Touch tap targets — topbar icon buttons ≥44px on touch devices ── */
+@media (pointer: coarse) {
+  .topbar-right .btn-ghost.btn-sm {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* ── E2. Peers table scroll affordance — soft shadows reveal when the
+   horizontally-scrollable table (.table-wrap already overflow-x:auto) has
+   more content off-edge. Lea-Verou technique: surface "cover" gradients
+   (attachment:local) sit at the content edges and hide the shadow gradients
+   (attachment:scroll) until you scroll away from that edge. ─────────────── */
+.table-wrap {
+  background:
+    linear-gradient(90deg, var(--surface), transparent) 0 0 / 32px 100% no-repeat,
+    linear-gradient(90deg, transparent, var(--surface)) 100% 0 / 32px 100% no-repeat,
+    radial-gradient(farthest-side at 0 50%,   rgba(0,0,0,.35), transparent) 0 0 / 16px 100% no-repeat,
+    radial-gradient(farthest-side at 100% 50%, rgba(0,0,0,.35), transparent) 100% 0 / 16px 100% no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
+
+/* ── Dashboard traffic-chart range toggle (15 min / 24h / 7d) ───────────── */
+.chart-range-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  line-height: 1;
+}
+.chart-range-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease-out),
+              color      var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
+}
+.chart-range-btn:hover:not(.active) { color: var(--text-muted); }
+.chart-range-btn.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 1px 4px -1px color-mix(in srgb, var(--accent) 65%, transparent);
+}
+
+

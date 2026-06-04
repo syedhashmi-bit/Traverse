@@ -2,9 +2,21 @@
   <img width="200" height="200" alt="Traverse" src="static/img/app.png" />
 </p>
 
-### Traverse
+<h1 align="center">Traverse</h1>
 
-A self-hosted WireGuard VPN dashboard built with Flask. Manage peers, monitor live traffic, view connection maps, and control your WireGuard interface — all from a clean dark-themed web UI.
+<p align="center">
+  A self-hosted WireGuard VPN dashboard built with Flask — manage peers, monitor live traffic, view connection maps, block ads with Pi-hole, and control your interface from a clean dark-themed web UI.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white&labelColor=23272e" alt="Python 3.12+">
+  <img src="https://img.shields.io/badge/Flask-3.1-000000?logo=flask&logoColor=white&labelColor=23272e" alt="Flask 3.1">
+  <img src="https://img.shields.io/badge/WireGuard-VPN-2ea44f?logo=wireguard&logoColor=white&labelColor=23272e" alt="WireGuard VPN">
+  <img src="https://img.shields.io/badge/Pi--hole-v6-96060C?logo=pihole&logoColor=white&labelColor=23272e" alt="Pi-hole v6">
+  <img src="https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white&labelColor=23272e" alt="SQLite (WAL)">
+  <img src="https://img.shields.io/badge/PWA-installable-5A0FC8?logo=pwa&logoColor=white&labelColor=23272e" alt="PWA">
+  <img src="https://img.shields.io/badge/License-MIT-3DA639?labelColor=23272e" alt="License: MIT">
+</p>
 
 <img width="1633" height="1145" alt="image" src="https://github.com/user-attachments/assets/abe368e0-691f-458d-b5eb-eff73840fdff" />
 

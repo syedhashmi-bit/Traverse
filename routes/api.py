@@ -144,6 +144,38 @@ def stats():
     })
 
 
+@api_bp.route('/api/traffic-history')
+@login_required
+def traffic_history():
+    """Traffic rate history for the dashboard chart.
+      range=live → last 15 min from the in-memory deque (1 s resolution)
+      range=24h  → persisted timeline, 10-min buckets (~144 pts)
+      range=7d   → persisted timeline, 1-hour buckets (~168 pts)
+    """
+    import time as _time
+    rng = request.args.get('range', 'live')
+
+    if rng == 'live':
+        return jsonify({'range': 'live', 'history': list(_rate_history)})
+
+    if rng == '7d':
+        since, bucket = int(_time.time()) - 7 * 86400, 3600
+    else:
+        rng, since, bucket = '24h', int(_time.time()) - 86400, 600
+
+    from database import get_traffic_timeline
+    agg = {}
+    for r in get_traffic_timeline(since):
+        b = (r['ts'] // bucket) * bucket
+        e = agg.setdefault(b, [0.0, 0.0, 0])
+        e[0] += r['rx_rate']; e[1] += r['tx_rate']; e[2] += 1
+    history = [
+        {'ts': b, 'rx_rate': round(v[0] / v[2], 1), 'tx_rate': round(v[1] / v[2], 1)}
+        for b, v in sorted(agg.items())
+    ]
+    return jsonify({'range': rng, 'history': history})
+
+
 @api_bp.route('/api/peer-history/<int:peer_id>')
 @login_required
 def peer_history(peer_id):

@@ -129,9 +129,9 @@
         <td>
           {% set tm = peer.tunnel_mode or 'full' %}
           {% if tm == 'vpn_only' %}
-            <span class="badge" style="background:rgba(34,211,238,.15); color:#22d3ee; border:1px solid rgba(34,211,238,.3);">VPN</span>
+            <span class="badge badge-cyan">VPN</span>
           {% elif tm == 'split' %}
-            <span class="badge" style="background:rgba(251,191,36,.15); color:#fbbf24; border:1px solid rgba(251,191,36,.3);">SPLIT</span>
+            <span class="badge badge-amber">SPLIT</span>
           {% else %}
             <span class="badge badge-success" style="opacity:.75;">FULL</span>
           {% endif %}

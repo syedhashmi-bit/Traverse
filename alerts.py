@@ -70,6 +70,7 @@ _peer_last_ip     = {}    # peer_id -> last endpoint IP seen
 _pihole_was_down  = False  # tracks pi-hole up/down transition
 _inactive_notified = {}    # peer_id -> last unix ts notified about long inactivity
 _expired_notified  = set() # peer_ids already notified as expired
+_prev_traffic     = None   # {'ts','rx','tx'} previous global totals, for rate calc
 
 
 def _extract_ip_port(endpoint):
@@ -418,6 +419,23 @@ def _check():
             if tx is None:
                 tx = peer.get('tx_bytes') or 0
             record_bandwidth_snapshot(peer['id'], rx, tx)
+
+    # ── Global traffic timeline (dashboard 24h/7d chart) ──────────────────
+    with _swallow('traffic_timeline'):
+        import time as _time
+        from database import record_traffic_sample
+        global _prev_traffic
+        now_ts = int(_time.time())
+        g_rx = sum(int((live.get(p['public_key']) or {}).get('rx_bytes') or 0) for p in peers)
+        g_tx = sum(int((live.get(p['public_key']) or {}).get('tx_bytes') or 0) for p in peers)
+        if _prev_traffic is not None:
+            dt = now_ts - _prev_traffic['ts']
+            if dt > 0:
+                # max(0, …) clamps counter resets (wg restart / peer removal).
+                rx_rate = max(0, g_rx - _prev_traffic['rx']) / dt
+                tx_rate = max(0, g_tx - _prev_traffic['tx']) / dt
+                record_traffic_sample(now_ts, round(rx_rate, 1), round(tx_rate, 1))
+        _prev_traffic = {'ts': now_ts, 'rx': g_rx, 'tx': g_tx}
 
     # ── Bandwidth anomaly detection ───────────────────────────────────────
     with _swallow('bandwidth_anomaly'):
