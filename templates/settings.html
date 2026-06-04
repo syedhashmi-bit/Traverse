@@ -211,7 +211,7 @@ WG_DNS={{ dns }}</div>
           <div class="detail-label">Admin Panel</div>
           <div class="detail-value text-sm">
             <code style="color:var(--accent);">{{ pihole_url }}</code>
-            <span class="text-dim" style="margin-left:8px; font-size:0.78rem;">(only accessible when connected to VPN)</span>
+            <span class="text-dim" style="margin-left:8px; font-size:0.78rem;">(reverse-proxied behind the Traverse login)</span>
           </div>
         </div>
         {% if pihole_pass %}
@@ -244,7 +244,7 @@ WG_DNS={{ dns }}</div>
         </div>
         <div class="mt-8 text-xs text-muted">
           Blocklist update (gravity) runs in the background and takes about a minute.
-          VPN clients automatically get ad blocking via <code style="color:var(--accent);">DNS = 10.8.0.1</code>.
+          VPN clients automatically get ad blocking via <code style="color:var(--accent);">DNS = 10.9.0.1</code>.
         </div>
       </div>
     </div>

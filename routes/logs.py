@@ -1,12 +1,13 @@
 import subprocess
 from flask import Blueprint, render_template, jsonify
 from routes.auth import login_required
+from wireguard import WG_INTERFACE
 
 logs_bp = Blueprint('logs', __name__)
 
 _LOG_CMDS = {
-    'traverse':  ['journalctl', '-u', 'traverse',        '-n', '100', '--no-pager', '--output=short'],
-    'wireguard': ['journalctl', '-u', 'wg-quick@wg0',    '-n', '100', '--no-pager', '--output=short'],
+    'traverse':  ['journalctl', '-u', 'traverse', '-n', '100', '--no-pager', '--output=short'],
+    'wireguard': ['journalctl', '-u', f'wg-quick@{WG_INTERFACE}', '-n', '100', '--no-pager', '--output=short'],
 }
 
 

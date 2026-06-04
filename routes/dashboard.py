@@ -7,7 +7,7 @@ from database import get_all_peers, update_peer_stats, count_expired_peers, get_
 from wireguard import (
     get_interface_status, parse_wg_show,
     is_peer_active, format_bytes, format_handshake,
-    format_handshake_short, WG_SUBNET, WG_ENDPOINT, WG_PORT,
+    format_handshake_short, WG_INTERFACE, WG_SUBNET, WG_ENDPOINT, WG_PORT,
     MAX_PEERS,
 )
 from routes.auth import login_required
@@ -58,12 +58,13 @@ def index():
         active_peers   = active_count,
         total_rx       = format_bytes(total_rx),
         total_tx       = format_bytes(total_tx),
+        interface      = WG_INTERFACE,
         subnet         = WG_SUBNET,
         endpoint       = WG_ENDPOINT,
         wg_port        = WG_PORT,
         format_bytes   = format_bytes,
         expired_peers  = count_expired_peers(),
         pihole_enabled = bool(os.getenv('PIHOLE_ENABLED')),
-        pihole_url     = os.getenv('PIHOLE_URL', 'http://10.8.0.1:8080/admin'),
+        pihole_url     = os.getenv('PIHOLE_WEB_URL', '/pihole'),
         recent_alerts  = [a for a in get_all_alerts(limit=10) if not a['seen']][:3],
     )

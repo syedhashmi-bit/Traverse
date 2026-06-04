@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.11.1] — 2026-06-04 (Post-migration fixes — VPN, Pi-hole, speedtest, stale refs)
+
+The VPS was migrated to a new host: WireGuard server moved from `wg0`/`10.8.0.0/24`/`51820`
+to **`wg1`/`10.9.0.0/24`/`51821`**, Pi-hole/FTL to **`10.9.0.1:8088`**, and the venv was
+rebuilt on Python 3.14. This release fixes everything the migration broke and sweeps up the
+hardcoded old values left behind. All values are env-driven (`.env` is canonical).
+
+### Fixed — VPN data plane
+- **Peers never reached the live interface.** `wg` is now AppArmor-confined and may only read
+  preshared-key files from `/etc/wireguard/`. `add_peer_to_interface` wrote the temp PSK to
+  `/tmp`, so every `wg set … preshared-key` failed with `fopen: Permission denied` — the peer
+  was saved to the DB but never added to the interface (no handshake, no traffic). The temp PSK
+  file is now created under `/etc/wireguard/`.
+- **Connected but no internet (DNS).** Peers created with "use Pi-hole" had `DNS = 10.8.0.1`
+  baked in from a hardcoded `PIHOLE_DNS` constant — the old Pi-hole IP, which on the new host
+  routes into the dead wg0 tunnel. `PIHOLE_DNS` is now `os.getenv('WG_SERVER_VPN_IP', …)`.
+
+### Fixed — wrong-interface / stale references
+- **Dashboard** NOC panel showed a hardcoded `wg0`; now renders the actual `WG_INTERFACE`.
+- **/logs** WireGuard panel tailed `wg-quick@wg0`; now tails `wg-quick@{WG_INTERFACE}`.
+- **Speedtest** never finished: (a) `speedtest-cli` was missing after the venv rebuild
+  (it was never pinned) — now in `requirements.txt` along with `psutil` and `gunicorn`;
+  (b) job state lived in a per-worker module global, so RUN and STATUS hit different gunicorn
+  workers — moved to a single-row SQLite table `speedtest_job` (worker-independent, with a
+  180 s staleness guard).
+- Module-default fallbacks and user-facing copy updated off the old `wg0`/`10.8.0.1`/`51820`
+  values (`wireguard.py`, `alerts.py`, `app.py`, peer templates, README).
+
+### Added
+- **`PIHOLE_WEB_URL`** env var — the user-facing Pi-hole admin link (the reverse-proxied,
+  auth-gated `/pihole` path), separate from `PIHOLE_URL` (the direct FTL API base the backend
+  talks to). Dashboard bar, sidebar link, and settings page use it.
+
+### Notes
+- `.gitignore` now also excludes `*.bak` / `.env.bak*` backups.
+- No schema-breaking changes; the 175-test suite passes.
+
 ## [1.11.0] — 2026-06-03 (Portable Pi-hole integration + auth-gated reverse proxy)
 
 Shaken out of a VPS migration that exposed a hardcoded dependency. Two

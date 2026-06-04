@@ -184,6 +184,21 @@ def migrate_db():
             )
         """)
 
+        # Single-row shared state for the in-progress speedtest. Lives in the DB
+        # (not worker memory) so RUN and STATUS stay consistent across gunicorn
+        # workers — otherwise a STATUS poll can land on a worker that never ran
+        # the job and report result=null forever.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS speedtest_job (
+                id         INTEGER PRIMARY KEY CHECK (id = 1),
+                running    INTEGER NOT NULL DEFAULT 0,
+                result     TEXT,
+                error      TEXT,
+                updated_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("INSERT OR IGNORE INTO speedtest_job (id, running) VALUES (1, 0)")
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS notification_settings (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -799,6 +814,41 @@ def get_last_speedtest():
             "SELECT * FROM speedtest_results ORDER BY tested_at DESC LIMIT 1"
         ).fetchone()
     return dict(row) if row else None
+
+
+def set_speedtest_job(running, result=None, error=None):
+    """Persist the shared speedtest job state (worker-independent)."""
+    import json as _json
+    from datetime import datetime
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE speedtest_job SET running=?, result=?, error=?, updated_at=? WHERE id=1",
+            (1 if running else 0,
+             _json.dumps(result) if result is not None else None,
+             error,
+             datetime.utcnow().isoformat()),
+        )
+
+
+def get_speedtest_job():
+    """Return {running, result, error, updated_at}. A 'running' flag older than
+    180 s is treated as stale (a worker died mid-test) so RUN isn't blocked."""
+    import json as _json
+    from datetime import datetime
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM speedtest_job WHERE id=1").fetchone()
+    if not row:
+        return {'running': False, 'result': None, 'error': None}
+    running = bool(row['running'])
+    if running and row['updated_at']:
+        try:
+            age = (datetime.utcnow() - datetime.fromisoformat(row['updated_at'])).total_seconds()
+            if age > 180:
+                running = False
+        except ValueError:
+            pass
+    result = _json.loads(row['result']) if row['result'] else None
+    return {'running': running, 'result': result, 'error': row['error']}
 
 
 # ── Port forwards ─────────────────────────────────────────────────────────────

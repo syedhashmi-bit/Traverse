@@ -21,7 +21,7 @@ A self-hosted WireGuard VPN dashboard built with Flask. Manage peers, monitor li
 - **Config download & inline QR** — `.conf` files plus an embedded QR you can scan on the spot
 - **Peer expiry** — set `expires_at`; expired peers are auto-disabled
 - **Per-peer notes, device type, and location history**
-- **Kill button** — force-disconnect a peer from `wg0` and disable in one click
+- **Kill button** — force-disconnect a peer from `wg1` and disable in one click
 - **Sortable / filterable peer table** — 10 sortable columns, filter chips for tunnel × status × device, combinable text search
 - **Bulk actions** — multi-select with master checkbox, then bulk Disable/Enable/Delete
 
@@ -35,7 +35,7 @@ A self-hosted WireGuard VPN dashboard built with Flask. Manage peers, monitor li
 - **Topology view** — radial canvas diagram with animated dashed lines on active peers and a slow-rotating server ring
 
 ### Pi-hole integration (v6 API)
-- DNS-level ad blocking for every VPN client (Pi-hole listens on `10.8.0.1:53` over WireGuard)
+- DNS-level ad blocking for every VPN client (Pi-hole listens on `10.9.0.1:53` over WireGuard)
 - Live blocked-count, rate, blocklist size, query count, and client count on the dashboard
 - Top-blocked-domains widget (5-min refresh)
 - Per-peer DNS query log on the peer detail page
@@ -119,7 +119,7 @@ A self-hosted WireGuard VPN dashboard built with Flask. Manage peers, monitor li
 - **Python**: 3.12+
 - **WireGuard**: `apt install wireguard`
 - **Privileges**: must run as `root` (needs access to `wg`, `wg-quick`, and `systemctl`)
-- **Ports**: UDP `51820` open for WireGuard; TCP `443`/`80` open for the web UI (if using nginx + HTTPS)
+- **Ports**: UDP `51821` open for WireGuard; TCP `443`/`80` open for the web UI (if using nginx + HTTPS)
 
 ---
 
@@ -157,22 +157,22 @@ chmod 644 /etc/wireguard/server_public.key
 ### 5. Create the WireGuard server config
 
 ```bash
-nano /etc/wireguard/wg0.conf
+nano /etc/wireguard/wg1.conf
 ```
 
 ```ini
 [Interface]
-Address    = 10.8.0.1/24
-ListenPort = 51820
+Address    = 10.9.0.1/24
+ListenPort = 51821
 PrivateKey = <contents of /etc/wireguard/server_private.key>
-PostUp     = iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE
-PostDown   = iptables -t nat -D POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE
+PostUp     = iptables -t nat -A POSTROUTING -s 10.9.0.0/24 -o eth0 -j MASQUERADE
+PostDown   = iptables -t nat -D POSTROUTING -s 10.9.0.0/24 -o eth0 -j MASQUERADE
 ```
 
 > Replace `eth0` with your actual outbound network interface (`ip route | grep default` shows it).
 
 ```bash
-chmod 600 /etc/wireguard/wg0.conf
+chmod 600 /etc/wireguard/wg1.conf
 ```
 
 ### 6. Enable IP forwarding
@@ -185,8 +185,8 @@ sysctl -p
 ### 7. Start WireGuard
 
 ```bash
-systemctl enable --now wg-quick@wg0
-wg show wg0   # confirm it's running
+systemctl enable --now wg-quick@wg1
+wg show wg1   # confirm it's running
 ```
 
 ### 8. Configure the application
@@ -214,10 +214,10 @@ All configuration lives in `.env`. Never commit this file.
 | `ADMIN_USERNAME` | **yes** | `admin` | Dashboard login username |
 | `ADMIN_PASSWORD` | **yes** | — | Dashboard login password — **change this** |
 | `WG_ENDPOINT` | **yes** | — | Your VPS public IP or domain (put into every peer's client config) |
-| `WG_INTERFACE` | no | `wg0` | WireGuard interface name |
-| `WG_PORT` | no | `51820` | UDP port WireGuard listens on |
-| `WG_SUBNET` | no | `10.8.0.0/24` | VPN subnet — IPs are auto-allocated from this range |
-| `WG_SERVER_VPN_IP` | no | `10.8.0.1` | Server's own VPN IP — skipped during peer IP allocation |
+| `WG_INTERFACE` | no | `wg1` | WireGuard interface name |
+| `WG_PORT` | no | `51821` | UDP port WireGuard listens on |
+| `WG_SUBNET` | no | `10.9.0.0/24` | VPN subnet — IPs are auto-allocated from this range |
+| `WG_SERVER_VPN_IP` | no | `10.9.0.1` | Server's own VPN IP — skipped during peer IP allocation |
 | `WG_DNS` | no | `1.1.1.1` | DNS server pushed to clients in their config |
 | `DATABASE_PATH` | no | `database.db` | Path to the SQLite file (relative to project root) |
 | `TOTP_SECRET` | no | — | Enables TOTP 2FA. Generate: `python3 -c "import pyotp; print(pyotp.random_base32())"` then scan the QR at `/totp-setup` |
@@ -226,7 +226,8 @@ All configuration lives in `.env`. Never commit this file.
 | `ALERT_INACTIVE_HOURS` | no | `0` (disabled) | Hours of inactivity before a peer triggers an alert |
 | `PIHOLE_ENABLED` | no | — | Set to `true` / `1` / `yes` to enable the Pi-hole integration |
 | `PIHOLE_PASSWORD` | no | — | Pi-hole admin password (used for the v6 API auth dance) |
-| `PIHOLE_URL` | no | `http://10.8.0.1:8080/admin` | Pi-hole admin URL |
+| `PIHOLE_URL` | no | `http://10.9.0.1:8088` | Pi-hole/FTL **API** base, talked to directly by the backend (no `/api` suffix — it's appended) |
+| `PIHOLE_WEB_URL` | no | `/pihole` | User-facing admin **link** in the UI (the reverse-proxied, auth-gated path). Relative `/pihole` resolves to the current host |
 
 > **Notifications module** (Email, Telegram, Discord at `/notifications`) — the canonical config store is the database (edit via the UI). `.env` keys (`NOTIFY_EMAIL_*`, `NOTIFY_TELEGRAM_*`, `NOTIFY_DISCORD_WEBHOOK`) are bootstrap fallbacks only. See `.env.example` for the full list.
 
@@ -386,7 +387,7 @@ You'll receive Telegram messages when:
 
 ```bash
 # Status of all three services
-systemctl status traverse nginx wg-quick@wg0
+systemctl status traverse nginx wg-quick@wg1
 
 # Restart after config/code changes
 systemctl restart traverse
@@ -395,7 +396,7 @@ systemctl restart traverse
 nginx -t && systemctl reload nginx
 
 # Restart WireGuard (drops all VPN connections briefly)
-systemctl restart wg-quick@wg0
+systemctl restart wg-quick@wg1
 
 # Live app logs
 journalctl -u traverse -f
@@ -405,7 +406,7 @@ tail -f /var/log/traverse/access.log
 tail -f /var/log/traverse/error.log
 
 # WireGuard peer status
-wg show wg0
+wg show wg1
 
 # Check SSL certificate expiry
 openssl x509 -in /etc/letsencrypt/live/your-domain.com/fullchain.pem -noout -dates

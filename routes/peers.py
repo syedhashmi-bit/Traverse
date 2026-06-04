@@ -31,7 +31,10 @@ from wireguard import (
 from routes.auth import login_required
 
 PIHOLE_ENABLED = bool(os.getenv('PIHOLE_ENABLED'))
-PIHOLE_DNS     = '10.8.0.1'
+# Pi-hole runs on the VPN server, so its DNS address is the server's VPN IP.
+# Env-driven so it tracks WG_SERVER_VPN_IP after a host/subnet migration
+# (was hardcoded '10.8.0.1', which broke DNS once Pi-hole moved to 10.9.0.1).
+PIHOLE_DNS     = os.getenv('WG_SERVER_VPN_IP', '10.9.0.1')
 FALLBACK_DNS   = '1.1.1.1'
 
 peers_bp = Blueprint('peers', __name__)

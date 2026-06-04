@@ -220,7 +220,7 @@
       const id   = btn.dataset.peerId;
       const ok = await window.confirmDialog({
         title: 'Kill peer "' + name + '"?',
-        body:  'Disconnect them from wg0 immediately and disable.',
+        body:  'Disconnect them from the VPN immediately and disable.',
         confirmLabel: 'Kill',
         danger: true,
       });
@@ -545,8 +545,8 @@
     return window.confirmDialog({
       title:        `${label} ${ids.length} peer${ids.length !== 1 ? 's' : ''}?`,
       body:         action === 'delete'
-                      ? 'This will permanently remove the selected peers from the database and detach them from wg0.'
-                      : `${label} the selected peers — they will ${action === 'enable' ? 'rejoin' : 'leave'} wg0.`,
+                      ? 'This will permanently remove the selected peers from the database and detach them from the VPN interface.'
+                      : `${label} the selected peers — they will ${action === 'enable' ? 'rejoin' : 'leave'} the VPN.`,
       confirmLabel: label,
       danger:       !!danger,
     }).then(ok => {

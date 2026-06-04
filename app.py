@@ -126,9 +126,9 @@ def create_app():
             'unseen_alert_count':      unseen,
             'app_version':             _version,
             'app_peer_total':          peer_total,
-            'app_wg_subnet':           os.getenv('WG_SUBNET', '10.8.0.0/24'),
+            'app_wg_subnet':           os.getenv('WG_SUBNET', '10.9.0.0/24'),
             'app_wg_endpoint':         os.getenv('WG_ENDPOINT', ''),
-            'app_pihole_url':          os.getenv('PIHOLE_URL', 'http://10.8.0.1:8080/admin'),
+            'app_pihole_url':          os.getenv('PIHOLE_WEB_URL', '/pihole'),
             'app_pihole_enabled':      bool(os.getenv('PIHOLE_ENABLED')),
             'notifications_active':    notif_active,
         }

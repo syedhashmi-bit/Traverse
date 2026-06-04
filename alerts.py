@@ -93,13 +93,13 @@ def _pihole_alive():
     """Return True/False if a quick TCP probe to the Pi-hole admin URL succeeds."""
     import socket
     from urllib.parse import urlparse
-    raw = os.getenv('PIHOLE_URL', 'http://10.8.0.1:8080/admin')
+    raw = os.getenv('PIHOLE_URL', 'http://10.9.0.1:8088')
     try:
         u = urlparse(raw if '://' in raw else 'http://' + raw)
-        host = u.hostname or '10.8.0.1'
+        host = u.hostname or '10.9.0.1'
         port = u.port or (443 if u.scheme == 'https' else 80)
     except Exception:
-        host, port = '10.8.0.1', 8080
+        host, port = '10.9.0.1', 8088
     try:
         with socket.create_connection((host, port), timeout=3):
             return True

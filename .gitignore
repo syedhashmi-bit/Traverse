@@ -1,5 +1,8 @@
 # Secrets — never commit
 .env
+.env.bak*
+*.bak
+*.bak-*
 database.db
 
 # AI tooling / local dev artifacts

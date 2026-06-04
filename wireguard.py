@@ -7,11 +7,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-WG_INTERFACE  = os.getenv('WG_INTERFACE',    'wg0')
-WG_SUBNET     = os.getenv('WG_SUBNET',       '10.8.0.0/24')
-WG_SERVER_IP  = os.getenv('WG_SERVER_VPN_IP', '10.8.0.1')
+# Defaults are fallbacks only — .env is canonical. Kept aligned with the
+# current deployment (post-migration) so an unset var can't silently revert to
+# the old wg0/10.8.0.0/24/51820 topology.
+WG_INTERFACE  = os.getenv('WG_INTERFACE',    'wg1')
+WG_SUBNET     = os.getenv('WG_SUBNET',       '10.9.0.0/24')
+WG_SERVER_IP  = os.getenv('WG_SERVER_VPN_IP', '10.9.0.1')
 WG_ENDPOINT   = os.getenv('WG_ENDPOINT',     'your-server-ip')
-WG_PORT       = os.getenv('WG_PORT',         '51820')
+WG_PORT       = os.getenv('WG_PORT',         '51821')
 WG_DNS        = os.getenv('WG_DNS',          '1.1.1.1')
 
 # Peer cap. Honour MAX_PEERS env var (default 20), clamp to the project's
@@ -109,7 +112,11 @@ def add_peer_to_interface(public_key, preshared_key, vpn_ip,
     """Add peer to running WireGuard interface via wg set.
     Server-side allowed-ips is always vpn_ip/32 — tunnel mode is client-side only."""
     import tempfile, os as _os
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.psk', delete=False) as f:
+    # The preshared key is passed via a temp file (keeps it out of argv / proc
+    # cmdline). It MUST live under /etc/wireguard/: the wg(8) AppArmor profile
+    # only permits reading PSK files from there — a file in /tmp yields
+    # "fopen: Permission denied" and the peer never reaches the live interface.
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.psk', dir='/etc/wireguard', delete=False) as f:
         f.write(preshared_key)
         psk_path = f.name
     try:

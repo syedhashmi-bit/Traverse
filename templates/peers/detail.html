@@ -27,7 +27,7 @@
     {% if peer.enabled %}
     <button type="button" class="btn btn-danger" id="kill-btn"
             data-peer-id="{{ peer.id }}" data-peer-name="{{ peer.name }}"
-            title="Immediately disconnect this peer from wg0 and disable">
+            title="Immediately disconnect this peer from the VPN and disable">
       ⚡ Kill
     </button>
     {% endif %}
@@ -605,14 +605,14 @@
             <label class="form-label">DNS Override <span class="text-dim">(optional)</span></label>
             <select class="form-select" id="edit-dns-preset">
               {% set cur_dns = peer.dns_override or peer.dns or '' %}
-              <option value="pihole"     {% if cur_dns == '10.8.0.1' %}selected{% endif %}>Pi-hole (10.8.0.1)</option>
+              <option value="pihole"     {% if cur_dns == '10.9.0.1' %}selected{% endif %}>Pi-hole (10.9.0.1)</option>
               <option value="cloudflare" {% if cur_dns in ('1.1.1.1, 1.0.0.1', '1.1.1.1') %}selected{% endif %}>Cloudflare (1.1.1.1, 1.0.0.1)</option>
               <option value="google"     {% if cur_dns in ('8.8.8.8, 8.8.4.4', '8.8.8.8') %}selected{% endif %}>Google (8.8.8.8, 8.8.4.4)</option>
               <option value="quad9"      {% if cur_dns == '9.9.9.9' %}selected{% endif %}>Quad9 (9.9.9.9)</option>
-              <option value="custom"     {% if cur_dns not in ('10.8.0.1', '1.1.1.1, 1.0.0.1', '1.1.1.1', '8.8.8.8, 8.8.4.4', '8.8.8.8', '9.9.9.9', '') %}selected{% endif %}>Custom…</option>
+              <option value="custom"     {% if cur_dns not in ('10.9.0.1', '1.1.1.1, 1.0.0.1', '1.1.1.1', '8.8.8.8, 8.8.4.4', '8.8.8.8', '9.9.9.9', '') %}selected{% endif %}>Custom…</option>
             </select>
             <input type="hidden" id="edit-dns-override" name="dns_override" value="{{ peer.dns_override or '' }}">
-            <div id="edit-custom-dns-grp" style="margin-top:6px; display:{% if peer.dns_override not in ('10.8.0.1', '1.1.1.1, 1.0.0.1', '1.1.1.1', '8.8.8.8, 8.8.4.4', '8.8.8.8', '9.9.9.9', '') and peer.dns_override %}block{% else %}none{% endif %};">
+            <div id="edit-custom-dns-grp" style="margin-top:6px; display:{% if peer.dns_override not in ('10.9.0.1', '1.1.1.1, 1.0.0.1', '1.1.1.1', '8.8.8.8, 8.8.4.4', '8.8.8.8', '9.9.9.9', '') and peer.dns_override %}block{% else %}none{% endif %};">
               <input class="form-input" type="text" id="edit-custom-dns-input"
                      value="{{ peer.dns_override or '' }}" placeholder="e.g. 8.8.8.8">
             </div>
@@ -752,7 +752,7 @@
   const customGrp  = document.getElementById('edit-custom-dns-grp');
   const customInp  = document.getElementById('edit-custom-dns-input');
   const DNS_MAP = {
-    pihole:     '10.8.0.1',
+    pihole:     '10.9.0.1',
     cloudflare: '1.1.1.1, 1.0.0.1',
     google:     '8.8.8.8, 8.8.4.4',
     quad9:      '9.9.9.9',
@@ -781,7 +781,7 @@
   btn.addEventListener('click', () => {
     const name = btn.dataset.peerName;
     const id   = btn.dataset.peerId;
-    if (!confirm(`Kill peer "${name}"?\n\nThey will be immediately removed from wg0 and disabled. The peer record will be preserved — you can re-enable later.`)) return;
+    if (!confirm(`Kill peer "${name}"?\n\nThey will be immediately removed from the VPN and disabled. The peer record will be preserved — you can re-enable later.`)) return;
     btn.disabled = true;
     const orig = btn.textContent;
     btn.textContent = '⟳ killing…';

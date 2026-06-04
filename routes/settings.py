@@ -24,7 +24,10 @@ _WG_KEY_RE = re.compile(r'^[A-Za-z0-9+/]{43}=$')
 settings_bp = Blueprint('settings', __name__)
 
 PIHOLE_ENABLED = bool(os.getenv('PIHOLE_ENABLED'))
-PIHOLE_URL     = os.getenv('PIHOLE_URL', 'http://10.8.0.1:8080/admin')
+# Backend API base (FTL, talked to directly). User-facing link is PIHOLE_WEB_URL.
+PIHOLE_URL     = os.getenv('PIHOLE_URL', 'http://10.9.0.1:8088')
+# Clickable admin link shown in the UI — the reverse-proxied, auth-gated path.
+PIHOLE_WEB_URL = os.getenv('PIHOLE_WEB_URL', '/pihole')
 PIHOLE_PASS    = os.getenv('PIHOLE_PASSWORD', '')
 
 
@@ -101,7 +104,7 @@ def index():
         speedtest_results  = speedtest_results,
         pihole_enabled     = PIHOLE_ENABLED,
         pihole_status      = _pihole_status_detail(),
-        pihole_url         = PIHOLE_URL,
+        pihole_url         = PIHOLE_WEB_URL,
         pihole_pass        = PIHOLE_PASS,
     )
 

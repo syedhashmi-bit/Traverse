@@ -631,13 +631,16 @@ def server_health():
 
 
 # ── Speedtest ─────────────────────────────────────────────────────────────────
+# Job state is persisted in SQLite (see database.speedtest_job) rather than in
+# module memory, so RUN and STATUS stay consistent no matter which gunicorn
+# worker handles each request.
 
-_speedtest_job  = {'running': False, 'result': None, 'error': None}
 _speedtest_lock = threading.Lock()
 
 
 def _run_speedtest_bg():
     import json as _json
+    from database import record_speedtest, set_speedtest_job
     try:
         import shutil
         st_bin = shutil.which('speedtest-cli') or '/var/www/traverse/venv/bin/speedtest-cli'
@@ -653,25 +656,21 @@ def _run_speedtest_bg():
         ping     = round(data['ping'], 1)
         srv      = data.get('server', {})
         srv_name = f"{srv.get('name','')}, {srv.get('country','')}".strip(', ')
-        from database import record_speedtest
         record_speedtest(download, upload, ping, srv_name)
-        with _speedtest_lock:
-            _speedtest_job.update({'running': False,
-                                   'result': {'download': download, 'upload': upload,
-                                              'ping': ping, 'server': srv_name},
-                                   'error': None})
+        set_speedtest_job(False, result={'download': download, 'upload': upload,
+                                          'ping': ping, 'server': srv_name})
     except Exception as exc:
-        with _speedtest_lock:
-            _speedtest_job.update({'running': False, 'result': None, 'error': str(exc)})
+        set_speedtest_job(False, error=str(exc))
 
 
 @api_bp.route('/api/speedtest/run', methods=['POST'])
 @login_required
 def speedtest_run():
+    from database import get_speedtest_job, set_speedtest_job
     with _speedtest_lock:
-        if _speedtest_job['running']:
+        if get_speedtest_job()['running']:
             return jsonify({'status': 'already_running'})
-        _speedtest_job.update({'running': True, 'result': None, 'error': None})
+        set_speedtest_job(True)
     t = threading.Thread(target=_run_speedtest_bg, daemon=True, name='speedtest')
     t.start()
     return jsonify({'status': 'running'})
@@ -680,9 +679,5 @@ def speedtest_run():
 @api_bp.route('/api/speedtest/status')
 @login_required
 def speedtest_status():
-    with _speedtest_lock:
-        return jsonify({
-            'running': _speedtest_job['running'],
-            'result':  _speedtest_job['result'],
-            'error':   _speedtest_job['error'],
-        })
+    from database import get_speedtest_job
+    return jsonify(get_speedtest_job())

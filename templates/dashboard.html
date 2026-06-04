@@ -98,7 +98,7 @@
 {% if pihole_enabled %}
 <a class="noc-pihole-bar" id="pihole-bar"
    href="{{ pihole_url }}" target="_blank" rel="noopener"
-   title="Open Pi-hole dashboard (VPN required)">
+   title="Open Pi-hole dashboard">
   <div class="noc-stat">
     <span class="noc-lbl">BLOCKED</span>
     <span class="noc-val skeleton" id="ph-blocked" style="color:var(--warning); min-width:42px;">—</span>
@@ -225,7 +225,7 @@
           {% endif %}
         </div>
         <div class="noc-kv-grid">
-          <span class="noc-k">Interface</span><span class="noc-v">{{ 'wg0' }}</span>
+          <span class="noc-k">Interface</span><span class="noc-v">{{ interface }}</span>
           <span class="noc-k">Endpoint</span><span class="noc-v">{{ endpoint }}:{{ wg_port }}</span>
           <span class="noc-k">Subnet</span><span class="noc-v">{{ subnet }}</span>
           <span class="noc-k">Server IP</span><span class="noc-v">{{ subnet.split('/')[0].rsplit('.', 1)[0] }}.1</span>
