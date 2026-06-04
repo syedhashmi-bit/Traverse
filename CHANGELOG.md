@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.13.1] — 2026-06-04 (CI fix — PSK temp-dir fallback)
+
+### Fixed
+- **`add_peer_to_interface` no longer requires `/etc/wireguard/` to exist.** The
+  1.11.1 AppArmor fix hardcoded the preshared-key temp file to `/etc/wireguard/`,
+  which crashed (`FileNotFoundError`) anywhere that directory is absent — notably
+  the GitHub Actions runner, so CI had been red since 1.11.1. It now uses
+  `/etc/wireguard/` only when it exists and is writable (production, where the
+  `wg` AppArmor profile requires it) and falls back to the default temp dir
+  otherwise (CI / tests / dev, where `wg` is stubbed). 175 tests pass; CI green.
+
 ## [1.13.0] — 2026-06-04 (Traffic chart: 24h / 7-day history + lighter refresh)
 
 The dashboard traffic chart can now show longer trends, and the chart polls

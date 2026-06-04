@@ -113,10 +113,15 @@ def add_peer_to_interface(public_key, preshared_key, vpn_ip,
     Server-side allowed-ips is always vpn_ip/32 — tunnel mode is client-side only."""
     import tempfile, os as _os
     # The preshared key is passed via a temp file (keeps it out of argv / proc
-    # cmdline). It MUST live under /etc/wireguard/: the wg(8) AppArmor profile
-    # only permits reading PSK files from there — a file in /tmp yields
-    # "fopen: Permission denied" and the peer never reaches the live interface.
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.psk', dir='/etc/wireguard', delete=False) as f:
+    # cmdline). On the production box it MUST live under /etc/wireguard/: the
+    # wg(8) AppArmor profile only permits reading PSK files from there — a file
+    # in /tmp yields "fopen: Permission denied" and the peer never reaches the
+    # interface. Fall back to the default temp dir where /etc/wireguard doesn't
+    # exist / isn't writable (CI, tests, dev), where wg is stubbed anyway.
+    _psk_dir = '/etc/wireguard'
+    if not (_os.path.isdir(_psk_dir) and _os.access(_psk_dir, _os.W_OK)):
+        _psk_dir = None
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.psk', dir=_psk_dir, delete=False) as f:
         f.write(preshared_key)
         psk_path = f.name
     try:
