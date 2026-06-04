@@ -137,6 +137,32 @@
 
 ## Installation
 
+### Quick install (recommended)
+
+On a fresh **Debian/Ubuntu** VPS, one command takes you from clone to a running dashboard:
+
+```bash
+git clone https://github.com/syedhashmi-bit/Traverse.git /var/www/traverse
+cd /var/www/traverse
+sudo ./install.sh
+```
+
+It installs the dependencies, creates the Python venv, generates the WireGuard server keys + `wg0.conf` (auto-detecting your egress interface), writes `.env` with a freshly generated `SECRET_KEY` (prompting only for an admin password and, optionally, a domain), installs the systemd service + nginx config, adds a swapfile on small boxes, and — if you give it a domain — obtains a free HTTPS certificate via certbot. It's **safe to re-run** (existing keys / `.env` / `wg0.conf` are kept).
+
+Unattended example:
+
+```bash
+sudo DOMAIN=vpn.example.com ADMIN_PASSWORD='change-me' RUN_CERTBOT=yes ./install.sh
+```
+
+Then open the printed URL, log in, and add your first peer. To enable Pi-hole ad-blocking, install Pi-hole separately and set the `PIHOLE_*` vars in `.env`.
+
+---
+
+### Manual installation
+
+<sub>Use this on other distros, or to understand each step. The quick installer above does all of this for you.</sub>
+
 ### 1. Install system dependencies
 
 ```bash

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.14.0] — 2026-06-04 (One-command installer)
+
+### Added
+- **`install.sh`** — a guided installer for Debian/Ubuntu that takes a fresh VPS
+  from `git clone` to a running dashboard in one command: system deps, Python
+  venv, WireGuard server keys + `wg0.conf` (auto-detected egress interface),
+  `.env` with a generated `SECRET_KEY` (prompts only for an admin password +
+  optional domain), systemd service, nginx, an optional swapfile on small boxes,
+  and optional certbot HTTPS. **Idempotent** — existing keys / `.env` / `wg0.conf`
+  are kept. Unattended via env vars (`DOMAIN`, `ADMIN_PASSWORD`, `RUN_CERTBOT`, …).
+- **`deploy/traverse.service`** + **`deploy/nginx.conf`** — the systemd unit and
+  nginx site as real, templated files (were copy-paste blocks in the README).
+
+### Changed
+- **README** — a "Quick install" section up top (`sudo ./install.sh`); the manual
+  steps are kept below for other distros / understanding each step.
+
 ## [1.13.1] — 2026-06-04 (CI fix — PSK temp-dir fallback)
 
 ### Fixed
