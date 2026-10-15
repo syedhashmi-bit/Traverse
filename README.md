@@ -147,7 +147,7 @@ cd /var/www/traverse
 sudo ./install.sh
 ```
 
-It installs the dependencies, creates the Python venv, generates the WireGuard server keys + `wg0.conf` (auto-detecting your egress interface), writes `.env` with a freshly generated `SECRET_KEY` (prompting only for an admin password and, optionally, a domain), installs the systemd service + nginx config, adds a swapfile on small boxes, and — if you give it a domain — obtains a free HTTPS certificate via certbot. It's **safe to re-run** (existing keys / `.env` / `wg0.conf` are kept).
+It installs the dependencies, creates the Python venv, generates the WireGuard server keys + `/etc/wireguard/<interface>.conf` (default `wg0`) (auto-detecting your egress interface), writes `.env` with a freshly generated `SECRET_KEY` (prompting only for an admin password and, optionally, a domain), installs the systemd service + nginx config, adds a swapfile on small boxes, and — if you give it a domain — obtains a free HTTPS certificate via certbot. It's **safe to re-run** (existing keys / `.env` / WireGuard config are kept).
 
 Unattended example:
 

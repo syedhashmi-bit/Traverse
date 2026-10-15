@@ -8,6 +8,8 @@ import pytest
 def _stub_iptables(monkeypatch):
     """No real iptables / ip route in the test env."""
     import routes.port_forwards as pf
+    # Keep a handle on the real function for the iptables-argv test below.
+    monkeypatch.setattr(pf, '_real_apply_rule', pf._apply_rule, raising=False)
     monkeypatch.setattr(pf, '_apply_rule', lambda *a, **kw: None)
     monkeypatch.setattr(pf, '_detect_public_iface', lambda: 'eth0')
     monkeypatch.setattr(pf, '_persist_iptables', lambda: None)
@@ -146,3 +148,18 @@ def test_delete_removes_rule(logged_in_client):
 def test_delete_404_on_missing_rule(logged_in_client):
     resp = logged_in_client.post('/port-forwards/99999/delete', headers=_hdrs())
     assert resp.status_code == 404
+
+
+# ── iptables rule shape ──────────────────────────────────────────────────────
+
+def test_forward_rule_targets_configured_wg_interface(monkeypatch):
+    """FORWARD -o must follow WG_INTERFACE, not a hardcoded wg0 (on the
+    migrated box wg0 is an unrelated client tunnel)."""
+    import routes.port_forwards as pf
+    calls = []
+    monkeypatch.setattr(pf, 'WG_INTERFACE', 'wgtest')
+    monkeypatch.setattr(pf.subprocess, 'run', lambda cmd, **kw: calls.append(cmd))
+    pf._real_apply_rule({'peer_vpn_ip': '10.9.0.2', 'protocol': 'tcp',
+                         'external_port': 2200, 'internal_port': 22})
+    fwd = [c for c in calls if 'FORWARD' in c]
+    assert fwd and fwd[0][fwd[0].index('-o') + 1] == 'wgtest'

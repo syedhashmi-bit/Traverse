@@ -2,7 +2,7 @@
 #
 # Traverse — one-command installer for Debian/Ubuntu.
 # Takes a fresh box from `git clone` to a running dashboard (HTTPS if a domain
-# is given). Safe to re-run: existing keys / .env / wg0.conf are kept, never
+# is given). Safe to re-run: existing keys / .env / <iface>.conf are kept, never
 # clobbered; the systemd unit + nginx config are re-rendered each run.
 #
 #   sudo ./install.sh

@@ -7,6 +7,7 @@ from database import (
     create_port_forward, set_port_forward_enabled, delete_port_forward,
 )
 from routes.auth import login_required
+from wireguard import WG_INTERFACE
 
 pf_bp = Blueprint('port_forwards', __name__)
 
@@ -54,7 +55,7 @@ def _apply_rule(rule, remove=False):
         ], check=False, timeout=10)
         subprocess.run([
             'iptables', flag, 'FORWARD',
-            '-i', iface, '-o', 'wg0', '-p', p, '--dport', int_p,
+            '-i', iface, '-o', WG_INTERFACE, '-p', p, '--dport', int_p,
             '-d', vpn_ip, '-j', 'ACCEPT',
         ], check=False, timeout=10)
     _persist_iptables()

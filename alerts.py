@@ -229,7 +229,7 @@ def _check():
                 'wg_down',
                 f'🚨 WireGuard ({WG_INTERFACE}) is DOWN on traverse server',
                 severity='critical',
-                legacy_html='🔴 <b>Traverse VPN</b>\n\nWireGuard (<code>wg0</code>) is <b>DOWN</b>.',
+                legacy_html=f'🔴 <b>Traverse VPN</b>\n\nWireGuard (<code>{WG_INTERFACE}</code>) is <b>DOWN</b>.',
             )
         try:
             create_alert('wg_down', f'WireGuard {WG_INTERFACE} is not running', severity='critical')
@@ -265,7 +265,7 @@ def _check():
 
     # ── Apply per-peer schedules ──────────────────────────────────────────
     # Each scheduled peer either should-be-enabled or should-be-disabled
-    # based on the current time in its own timezone. We flip wg0 + DB
+    # based on the current time in its own timezone. We flip the WG interface + DB
     # only on transitions to avoid thrashing.
     with _swallow('schedules'):
         from datetime import datetime as _dt
@@ -310,7 +310,7 @@ def _check():
                 else:
                     remove_peer_from_interface(sch['public_key'])
             except Exception:
-                _log.exception('schedule wg0 sync failed for peer %s', sch['peer_name'])
+                _log.exception('schedule wg sync failed for peer %s', sch['peer_name'])
             try:
                 _audit(
                     'peer.schedule_' + ('enabled' if desired else 'disabled'),

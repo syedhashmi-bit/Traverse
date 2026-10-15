@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.14.1] — 2026-10-15 (Post-migration interface fixes, Pi-hole top-blocked)
+
+### Fixed
+- **Port forwards targeted the wrong interface.** The iptables `FORWARD` rule was
+  hardcoded to `-o wg0`; since the migration `wg0` is an unrelated client tunnel
+  and the server is `wg1`. It now uses `WG_INTERFACE`. Regression test added.
+- **Dashboard "Top blocked" panel never appeared.** It called the v5-era
+  `stats/top_blocked`, which 404s on FTL v6; now uses
+  `stats/top_domains?blocked=true` and reads the v6 `domains` array.
+- **Legacy Telegram WG-down alert** named `wg0` regardless of the configured
+  interface.
+- **Orphaned preshared-key temp files.** `add_peer_to_interface` created the
+  file before its `try`, so a failed write could leave it in `/etc/wireguard/`;
+  it now uses `mkstemp` and writes inside the `try`.
+
+### Changed
+- **`.env.example`** documents the Pi-hole vars (`PIHOLE_ENABLED`, `PIHOLE_URL`,
+  `PIHOLE_PASSWORD`, `PIHOLE_WEB_URL`).
+- **README / `install.sh`** no longer imply the WireGuard config is always `wg0.conf`.
+
 ## [1.14.0] — 2026-06-04 (One-command installer)
 
 ### Added

@@ -443,12 +443,13 @@ def pihole_top_blocked():
         return jsonify({'ok': False, 'reason': 'auth failed'})
     try:
         req = _ureq.Request(
-            _pihole_url('stats/top_blocked?count=10'),
+            # v6 endpoint; `stats/top_blocked` was v5 and 404s on FTL v6.
+            _pihole_url('stats/top_domains?blocked=true&count=10'),
             headers={'X-FTL-SID': sid},
         )
         with _ureq.urlopen(req, timeout=4) as resp:
             raw = _json.loads(resp.read())
-        blocked = raw.get('blocked', raw.get('top_blocked', {}))
+        blocked = raw.get('domains', raw.get('blocked', raw.get('top_blocked', {})))
         if isinstance(blocked, dict):
             items = [{'domain': k, 'count': v} for k, v in blocked.items()]
         elif isinstance(blocked, list):

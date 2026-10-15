@@ -121,10 +121,11 @@ def add_peer_to_interface(public_key, preshared_key, vpn_ip,
     _psk_dir = '/etc/wireguard'
     if not (_os.path.isdir(_psk_dir) and _os.access(_psk_dir, _os.W_OK)):
         _psk_dir = None
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.psk', dir=_psk_dir, delete=False) as f:
-        f.write(preshared_key)
-        psk_path = f.name
+    # mkstemp + write inside the try so a failed write can't orphan the file.
+    fd, psk_path = tempfile.mkstemp(suffix='.psk', dir=_psk_dir)
     try:
+        with _os.fdopen(fd, 'w') as f:
+            f.write(preshared_key)
         _run([
             'wg', 'set', WG_INTERFACE,
             'peer', public_key,
