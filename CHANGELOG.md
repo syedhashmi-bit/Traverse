@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.14.2] — 2026-10-15 (Connection map: keyless tiles + GeoIP fallback)
+
+### Fixed
+- **Connection map showed "API KEY REQUIRED" tiles.** CARTO basemaps now require
+  an API key and serve a placeholder image with HTTP 200, so the OSM
+  `tileerror` fallback never fired. Switched to Esri World Dark Gray (keyless,
+  dark, max zoom 16) with OSM kept as the error fallback; CSP `img-src` updated
+  (`server.arcgisonline.com` replaces `*.basemaps.cartocdn.com`).
+- **Peers missing from the map.** ipapi.co rate-limits datacenter IPs
+  (`{"error": true, "reason": "RateLimited"}`). `_geolocate_ip` now falls through
+  `_GEO_PROVIDERS`: ipapi.co → ipwho.is → GeoJS, all keyless. Providers that
+  return no coordinates (e.g. GeoJS `"nil"` for anycast IPs) are skipped.
+
+### Ops notes (not code — recorded for reference)
+- The host was restored from a snapshot onto a new Hetzner box on 2026-07-26
+  (Helsinki, `135.181.157.248`, 8 GB RAM). The restore left
+  `/etc/pihole/pihole.toml` at 0 bytes and FTL eventually lost its DB handles
+  ("Database not available"); recovered on 2026-10-15 by having FTL rewrite the
+  TOML from its in-memory config via the API, then restarting it.
+- Pi-hole blocklists added: HaGeZi TIF, HaGeZi Badware Hoster, Frogeye
+  first-party trackers (≈1.73M unique domains total); malformed popupads URL
+  fixed.
+
 ## [1.14.1] — 2026-10-15 (Post-migration interface fixes, Pi-hole top-blocked)
 
 ### Fixed

@@ -29,36 +29,50 @@ def _extract_ip(endpoint):
     return endpoint.rsplit(':', 1)[0]
 
 
+# Keyless GeoIP providers, tried in order. ipapi.co rate-limits datacenter IPs
+# aggressively (returns {"error": true, "reason": "RateLimited"}), so fall
+# through to the others rather than leaving peers off the map. Each entry is
+# (url template, country-name key, success predicate).
+_GEO_PROVIDERS = (
+    ('https://ipapi.co/{ip}/json/',               'country_name', lambda d: not d.get('error')),
+    ('https://ipwho.is/{ip}',                     'country',      lambda d: d.get('success', True)),
+    ('https://get.geojs.io/v1/ip/geo/{ip}.json',  'country',      lambda d: True),
+)
+
+
 def _geolocate_ip(ip):
-    """Call ipapi.co for geo data. Returns dict with lat/lon/city/country/country_code or None."""
+    """Look up geo data, falling through _GEO_PROVIDERS. Returns dict with
+    lat/lon/city/country/country_code or None."""
     # Validate ip is a real public IP before splicing it into the URL — avoids
     # any chance of path/query injection and skips unroutable addresses that
-    # ipapi can't resolve anyway.
+    # no provider can resolve anyway.
     try:
         addr = ipaddress.ip_address(ip)
     except (ValueError, TypeError):
         return None
     if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_multicast:
         return None
-    try:
-        ctx = ssl.create_default_context()
-        url = f'https://ipapi.co/{ip}/json/'
-        req = urllib.request.Request(url, headers={'User-Agent': 'traverse-vpn/1.0'})
-        with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
-            data = json.loads(resp.read())
-        lat = data.get('latitude')
-        lon = data.get('longitude')
-        if lat is None or lon is None:
-            return None
-        return {
-            'lat':          float(lat),
-            'lon':          float(lon),
-            'city':         data.get('city', ''),
-            'country':      data.get('country_name', ''),
-            'country_code': data.get('country_code', ''),
-        }
-    except Exception:
-        return None
+    ctx = ssl.create_default_context()
+    for url_tmpl, country_key, ok in _GEO_PROVIDERS:
+        try:
+            req = urllib.request.Request(url_tmpl.format(ip=addr),
+                                         headers={'User-Agent': 'traverse-vpn/1.0'})
+            with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
+                data = json.loads(resp.read())
+            lat = data.get('latitude')
+            lon = data.get('longitude')
+            if not ok(data) or lat is None or lon is None:
+                continue
+            return {
+                'lat':          float(lat),
+                'lon':          float(lon),
+                'city':         data.get('city') or '',
+                'country':      data.get(country_key) or '',
+                'country_code': data.get('country_code') or '',
+            }
+        except Exception:
+            continue
+    return None
 
 
 def _get_geo(peer):
