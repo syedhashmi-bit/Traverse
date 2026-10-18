@@ -1,7 +1,7 @@
 import os
 import secrets
 from datetime import timedelta
-from flask import Flask, g, render_template, request
+from flask import Flask, g, render_template, request, session
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -106,6 +106,15 @@ def create_app():
 
     @app.context_processor
     def inject_globals():
+        # App chrome data (VPN subnet + endpoint, WireGuard up/down, peer and
+        # unseen-alert counts, Pi-hole link) is for logged-in admins only.
+        # Anonymous renders — /login, /login/verify, /offline, the public
+        # 404/500 pages — get none of it, and none of it is computed (no
+        # `wg`/systemctl call, no DB count) for an unauthenticated request.
+        # Only base.html uses these keys, and base.html is never rendered
+        # for an anonymous visitor (see _error_page below).
+        if not session.get('logged_in'):
+            return {}
         from wireguard import get_interface_status
         from database import count_unseen_alerts, count_peers
         try:
@@ -216,13 +225,34 @@ def create_app():
             )
         return resp
 
+    def _error_page(code, title, message):
+        # Logged-in admins keep the full layout (404.html / 500.html extend
+        # base.html). Anonymous visitors get a bare standalone page: the
+        # base.html chrome would show the VPN subnet, WireGuard state and
+        # peer/alert counts to anyone who requests a missing URL.
+        if session.get('logged_in'):
+            return render_template(f'{code}.html'), code
+        return render_template('error_public.html', code=code,
+                               title=title, message=message), code
+
     @app.errorhandler(404)
     def not_found(e):
-        return render_template('404.html'), 404
+        return _error_page(404, 'Not Found', 'Page not found.')
+
+    @app.errorhandler(405)
+    def method_not_allowed(e):
+        # /api/public-stats must be indistinguishable from an unknown URL on
+        # every method. Its rule already accepts the common ones and 404s
+        # them itself; this catches the rest (PROPFIND, MKCOL, ...), which
+        # werkzeug would otherwise answer with 405 + an `Allow:` header.
+        from routes.api import PUBLIC_STATS_PATH
+        if request.path == PUBLIC_STATS_PATH:
+            return not_found(e)
+        return e
 
     @app.errorhandler(500)
     def server_error(e):
-        return render_template('500.html'), 500
+        return _error_page(500, 'Server Error', 'Something went wrong.')
 
     return app
 

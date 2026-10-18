@@ -1,4 +1,6 @@
+import hmac
 import ipaddress
+import os
 import re
 import subprocess
 import threading
@@ -8,9 +10,9 @@ import urllib.request as _ureq
 import urllib.error as _uerr
 import json as _json
 from collections import deque
-from datetime import datetime
-from flask import Blueprint, jsonify, request
-from database import get_all_peers, upsert_traffic_sample, get_peer_daily_traffic
+from datetime import datetime, timezone
+from flask import Blueprint, abort, jsonify, request
+from database import get_all_peers, upsert_traffic_sample, get_peer_daily_traffic, get_total_traffic_bytes
 from wireguard import parse_wg_show, format_bytes, is_peer_active, format_handshake, get_interface_status, WG_INTERFACE
 from routes.auth import login_required
 from cache_ext import cache
@@ -35,6 +37,15 @@ def _live_peers():
     _wg_cache['ts']  = now
     _wg_cache['data'] = data
     return data
+
+
+def _peer_online(peer, live_info):
+    """The dashboard's definition of "online": the peer is enabled AND its
+    last handshake (live from `wg show`, else the DB copy) is within
+    is_peer_active()'s 5-minute window. Shared by /api/stats (which drives
+    the dashboard's live count) and /api/public-stats so they can't drift."""
+    last_hs = (live_info or {}).get('last_handshake') or peer.get('last_handshake')
+    return bool(peer.get('enabled')) and is_peer_active(last_hs)
 
 
 @api_bp.route('/api/stats')
@@ -76,7 +87,7 @@ def stats():
         total_tx_rate += tx_rate
 
         last_hs = live_info.get('last_handshake') or peer.get('last_handshake')
-        active  = bool(peer.get('enabled')) and is_peer_active(last_hs)
+        active  = _peer_online(peer, live_info)
         if active:
             active_count += 1
 
@@ -142,6 +153,79 @@ def stats():
         'wg_running':    get_interface_status()['running'],
         'history':       list(_rate_history),
     })
+
+
+# ── Public, token-gated, counts-only stats ──────────────────────────────────
+#
+# Deliberately NOT @login_required: an external status page polls it with
+# `Authorization: Bearer <TRAVERSE_PUBLIC_STATS_TOKEN>`. Any auth failure
+# (header missing/malformed, wrong token, env var unset/empty) is a plain
+# 404 — the same page as an unknown URL — so the endpoint stays invisible.
+# Never add names, keys, IPs, endpoints or locations to the payload.
+#
+# Every OTHER method must also look like an unknown URL: a GET-only rule
+# would answer OPTIONS with 200 + `Allow:` and POST/PUT/... with 405, which
+# gives the endpoint away. So the rule claims all the common methods with
+# provide_automatic_options=False, and the view 404s anything that isn't an
+# authorised GET/HEAD. Rarer methods (PROPFIND, ...) still hit werkzeug's
+# 405; app.py's 405 handler turns those into the normal 404 for this path
+# (PUBLIC_STATS_PATH). No state changes on any method, so the CSRF origin
+# check in app.py treats this path exactly as it treats an unknown URL.
+#
+# Not @cache.cached: that would cache before the token check. Instead the
+# computed payload is memoised per worker for _PUBLIC_STATS_TTL seconds
+# (gunicorn runs 2 workers, so each keeps its own copy — fine for counts).
+
+PUBLIC_STATS_PATH   = '/api/public-stats'
+_PUBLIC_STATS_METHODS = ('GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS')
+_PUBLIC_STATS_TTL   = 60   # seconds
+_public_stats_cache = {'ts': 0.0, 'data': None}
+_public_stats_lock  = threading.Lock()
+
+
+def _public_stats_authorized():
+    expected = os.environ.get('TRAVERSE_PUBLIC_STATS_TOKEN', '').strip()
+    if not expected:
+        return False
+    scheme, _, supplied = request.headers.get('Authorization', '').partition(' ')
+    supplied = supplied.strip()
+    if scheme.lower() != 'bearer' or not supplied:
+        return False
+    # Compare as bytes: compare_digest raises on non-ASCII str input.
+    return hmac.compare_digest(supplied.encode('utf-8'), expected.encode('utf-8'))
+
+
+def _compute_public_stats():
+    live  = _live_peers()
+    peers = get_all_peers()
+    online = sum(1 for p in peers if _peer_online(p, live.get(p['public_key'])))
+    try:
+        traffic_30d = int(get_total_traffic_bytes(days=30))
+    except Exception:
+        traffic_30d = None
+    return {
+        'peers_total':       len(peers),
+        'peers_online':      online,
+        'traffic_30d_bytes': traffic_30d,
+        'generated_at':      datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    }
+
+
+@api_bp.route(PUBLIC_STATS_PATH, methods=_PUBLIC_STATS_METHODS,
+              provide_automatic_options=False)
+def public_stats():
+    # Method check first, token second: either failure is the app's normal
+    # 404 (app.py not_found handler), identical to an unknown URL.
+    if request.method not in ('GET', 'HEAD') or not _public_stats_authorized():
+        abort(404)
+    with _public_stats_lock:
+        now = time.monotonic()
+        data = _public_stats_cache['data']
+        if data is None or now - _public_stats_cache['ts'] >= _PUBLIC_STATS_TTL:
+            data = _compute_public_stats()
+            _public_stats_cache['data'] = data
+            _public_stats_cache['ts'] = now
+    return jsonify(data)
 
 
 @api_bp.route('/api/traffic-history')

@@ -41,6 +41,9 @@ def _isolate_env(tmp_path, monkeypatch):
     monkeypatch.setenv('MAX_PEERS', '')
     monkeypatch.setenv('TELEGRAM_BOT_TOKEN', '')
     monkeypatch.setenv('NOTIFY_DISCORD_WEBHOOK', '')
+    # Empty == unset for /api/public-stats (→ 404); tests that need a
+    # token set their own. Keeps the real .env token out of the suite.
+    monkeypatch.setenv('TRAVERSE_PUBLIC_STATS_TOKEN', '')
 
     # Force database module to re-resolve the path for every test.
     import database

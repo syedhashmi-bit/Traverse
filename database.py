@@ -471,6 +471,30 @@ def get_peer_daily_traffic(peer_id, days=30):
     return [dict(r) for r in reversed(rows)]
 
 
+def get_total_traffic_bytes(days=30):
+    """Sum rx+tx across ALL peers over the last `days` UTC calendar days
+    (today included) from the `traffic_samples` daily aggregates.
+
+    Counts only — used by the token-gated /api/public-stats endpoint.
+    BEST-EFFORT, not an accurate meter: rows are only written by /api/stats
+    while someone has the dashboard open, from per-gunicorn-worker
+    in-memory day baselines (`_daily_buffer` in routes/api.py) that reset on
+    restart and overwrite each other on upsert. Treat it as a rough lower
+    bound. Rows of deleted peers are gone too (ON DELETE CASCADE).
+    """
+    from datetime import datetime, timedelta, timezone
+    days = max(1, int(days))
+    # Same UTC 'YYYY-MM-DD' keys that routes/api.py stats() writes.
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days - 1)).strftime('%Y-%m-%d')
+    with get_db() as conn:
+        row = conn.execute("""
+            SELECT COALESCE(SUM(rx_bytes + tx_bytes), 0)
+              FROM traffic_samples
+             WHERE day >= ?
+        """, (cutoff,)).fetchone()
+    return int(row[0] or 0)
+
+
 # ── Expiry ────────────────────────────────────────────────────────────────────
 
 def update_peer_expiry(peer_id, expires_at):

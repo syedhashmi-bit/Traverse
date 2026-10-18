@@ -1,5 +1,36 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **`GET /api/public-stats`** — token-gated, counts-only stats for an external
+  status page: `{"peers_total", "peers_online", "traffic_30d_bytes",
+  "generated_at"}`. Auth is `Authorization: Bearer <token>` compared with
+  `hmac.compare_digest` against the new `TRAVERSE_PUBLIC_STATS_TOKEN` env var.
+  A missing/wrong token or an unset var returns the normal 404 page, so the
+  endpoint looks like an unknown URL — on every HTTP method: the rule takes
+  GET/HEAD/POST/PUT/PATCH/DELETE/OPTIONS with `provide_automatic_options=False`
+  and 404s anything but an authorised GET/HEAD, and a new app-level 405
+  handler 404s rarer methods (PROPFIND, …) for this path, so there is no
+  `200 OPTIONS` / `405` + `Allow:` tell. Not `@login_required`. "Online" uses the same rule as the
+  dashboard's live count (`_peer_online()`, now shared with `/api/stats`).
+  `traffic_30d_bytes` sums the `traffic_samples` daily aggregates for the last
+  30 UTC days (`database.get_total_traffic_bytes()`), or `null` if that query
+  fails. It is best-effort only: daily rows are written only while a
+  dashboard is open, from per-worker baselines, so it under-counts. The payload is cached 60 s in each gunicorn worker. Never includes
+  names, keys, IPs, endpoints or locations.
+- `TRAVERSE_PUBLIC_STATS_TOKEN` documented in `.env.example`; 17 tests in
+  `tests/test_public_stats.py`, 7 in `tests/test_error_pages.py` (suite: 200).
+
+### Security
+- **404/500 pages no longer leak app data to anonymous visitors.** They
+  extended `base.html`, so any missing URL showed the VPN subnet + endpoint,
+  WireGuard up/down and peer/unseen-alert counts to anyone. Anonymous
+  visitors now get a bare standalone `templates/error_public.html`; logged-in
+  admins keep the full layout. The `inject_globals` context processor now
+  returns nothing for anonymous requests (login, TOTP verify, offline, error
+  pages) and skips the `wg`/systemctl call and DB counts entirely.
+
 ## [1.14.2] — 2026-10-15 (Connection map: keyless tiles + GeoIP fallback)
 
 ### Fixed
