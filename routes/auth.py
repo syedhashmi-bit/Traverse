@@ -1,105 +1,43 @@
-import base64
-import hmac
-import io
-import os
-import threading
-import time
 from functools import wraps
 
-import pyotp
-import qrcode
 from flask import (
-    Blueprint, render_template, request, redirect,
-    url_for, session, abort,
+    Blueprint, current_app, render_template, request, redirect,
+    url_for, session,
 )
-from dotenv import load_dotenv
+from itsdangerous import BadSignature, URLSafeTimedSerializer
 
-load_dotenv()
+import google_auth
 
 auth_bp = Blueprint('auth', __name__)
 
+# Holds the in-flight login (state, nonce, PKCE verifier, post-login path)
+# between /login/google and its callback. Signed with SECRET_KEY, scoped to
+# that path so it never rides along on normal traffic, and SameSite=Lax so
+# the browser still sends it on Google's top-level redirect back to us.
+_FLOW_COOKIE      = 'traverse_oauth'
+_FLOW_COOKIE_PATH = '/login/google'
+_FLOW_SALT        = 'traverse.google-flow'
 
-# ── Brute-force throttle ──────────────────────────────────────────────────────
-# In-memory per-IP failure counter with sliding window. Survives single-process
-# restarts only — fine for a 2-worker gunicorn admin tool with one operator.
-# Locks the bucket per IP to keep increments correct under concurrency.
-_FAIL_LIMIT  = 5            # consecutive failures before lockout kicks in
-_FAIL_WINDOW = 15 * 60      # window over which failures count (seconds)
-_LOCK_BACKOFF = 60          # base lockout in seconds; doubles per extra fail
-_fail_lock = threading.Lock()
-_fail_state = {}            # ip -> {'fails': [ts, ...], 'locked_until': ts}
-
-
-def _record_failure(ip):
-    now = time.time()
-    with _fail_lock:
-        s = _fail_state.setdefault(ip, {'fails': [], 'locked_until': 0.0})
-        s['fails'] = [t for t in s['fails'] if now - t < _FAIL_WINDOW]
-        s['fails'].append(now)
-        if len(s['fails']) >= _FAIL_LIMIT:
-            extra = len(s['fails']) - _FAIL_LIMIT
-            s['locked_until'] = now + _LOCK_BACKOFF * (2 ** extra)
-
-
-def _record_success(ip):
-    with _fail_lock:
-        _fail_state.pop(ip, None)
-
-
-def _seconds_locked(ip):
-    now = time.time()
-    with _fail_lock:
-        s = _fail_state.get(ip)
-        if not s:
-            return 0
-        remaining = int(s['locked_until'] - now)
-        return remaining if remaining > 0 else 0
+# ?error= codes the login page knows how to explain. Anything else → 'failed'.
+_LOGIN_ERRORS = {
+    'not_configured': 'Google sign-in isn’t set up on this server yet.',
+    'denied':         'Sign-in was cancelled.',
+    'expired':        'That sign-in attempt expired. Please try again.',
+    'unverified':     'That Google account’s email address isn’t verified.',
+    'not_allowed':    'That Google account isn’t allowed to sign in.',
+    'failed':         'Sign-in failed. Please try again.',
+}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _safe_next(target):
-    """Accept only relative paths — blocks open-redirect attacks."""
-    if target and target.startswith('/') and not target.startswith('//'):
+    """Accept only relative paths — blocks open-redirect attacks. Browsers
+    read `\\` as `/`, so `/\\evil.example` would be `//evil.example`."""
+    if (target and target.startswith('/') and not target.startswith('//')
+            and '\\' not in target and target.isprintable()):
         return target
     return url_for('dashboard.index')
-
-
-def _get_totp_secret():
-    """Resolve the active TOTP secret. DB takes precedence so the UI-driven
-    enrol flow wins over the legacy `TOTP_SECRET` env var. Falls back to env
-    so existing setups keep working without forcing an immediate migration."""
-    try:
-        from database import get_totp_config
-        cfg = get_totp_config()
-        if cfg.get('secret'):
-            return cfg['secret']
-    except Exception:
-        pass
-    return os.getenv('TOTP_SECRET', '')
-
-
-def _get_totp():
-    secret = _get_totp_secret()
-    return pyotp.TOTP(secret) if secret else None
-
-
-def _hash_backup_code(code: str) -> str:
-    """sha256 hex of an uppercase-normalised backup code (no dashes/spaces)."""
-    import hashlib
-    norm = (code or '').upper().replace('-', '').replace(' ', '')
-    return hashlib.sha256(norm.encode('utf-8')).hexdigest()
-
-
-def _try_backup_code(code: str) -> bool:
-    """Consume `code` if it matches a stored backup code. One-shot."""
-    if not code:
-        return False
-    try:
-        from database import consume_backup_code
-        return consume_backup_code(_hash_backup_code(code))
-    except Exception:
-        return False
 
 
 def _client_ip():
@@ -109,28 +47,46 @@ def _client_ip():
     return request.remote_addr or 'unknown'
 
 
-def _notify_login_success():
+def _flow_serializer():
+    return URLSafeTimedSerializer(current_app.secret_key, salt=_FLOW_SALT)
+
+
+def _notify_login_success(email):
     try:
         from notifications import send_notification
         send_notification(
             'login_success',
-            f'🔐 Someone logged into traverse dashboard (IP `{_client_ip()}`)',
+            f'🔐 {email} signed into traverse dashboard (IP `{_client_ip()}`)',
             severity='info',
         )
     except Exception:
         pass
 
 
-def _notify_login_failed(who):
+def _notify_login_failed(email):
     try:
         from notifications import send_notification
         send_notification(
             'login_failed',
-            f'🚫 Failed login attempt on traverse dashboard (IP `{_client_ip()}`)',
+            f'🚫 Google account {email} was refused sign-in to traverse '
+            f'(IP `{_client_ip()}`)',
             severity='warning',
         )
     except Exception:
         pass
+
+
+def enforce_allowlist():
+    """App-wide before_request: drop any session whose email is no longer on
+    TRAVERSE_ADMIN_EMAILS (or never had one — password-era sessions). Every
+    `session.get('logged_in')` check downstream then sees an anonymous
+    visitor, so removing an email and restarting takes effect immediately.
+    Static files are skipped: touching the session adds `Vary: Cookie`, which
+    would defeat nginx's `immutable` caching of /static/."""
+    if request.path.startswith('/static/'):
+        return
+    if session.get('logged_in') and not google_auth.is_allowed(session.get('email')):
+        session.clear()
 
 
 # ── Decorator ─────────────────────────────────────────────────────────────────
@@ -144,180 +100,115 @@ def login_required(f):
     return decorated
 
 
-# ── Step 1: username + password ───────────────────────────────────────────────
+# ── Login page ────────────────────────────────────────────────────────────────
 
-@auth_bp.route('/login', methods=['GET', 'POST'])
+@auth_bp.route('/login')
 def login():
     if session.get('logged_in'):
         return redirect(url_for('dashboard.index'))
-
-    error = None
-    ip = _client_ip()
-
-    if request.method == 'POST':
-        locked = _seconds_locked(ip)
-        if locked:
-            error = f'Too many failed attempts. Try again in {locked}s.'
-            return render_template(
-                'login.html',
-                error    = error,
-                next_url = request.args.get('next', ''),
-            ), 429
-
-        username = request.form.get('username', '')
-        password = request.form.get('password', '')
-
-        expected_user = os.getenv('ADMIN_USERNAME', '')
-        expected_pass = os.getenv('ADMIN_PASSWORD', '')
-
-        # hmac.compare_digest prevents timing-based enumeration
-        user_match = hmac.compare_digest(
-            username.encode('utf-8'),
-            expected_user.encode('utf-8'),
-        )
-        pass_match = hmac.compare_digest(
-            password.encode('utf-8'),
-            expected_pass.encode('utf-8'),
-        )
-
-        if user_match and pass_match:
-            next_url = _safe_next(
-                request.form.get('next') or request.args.get('next')
-            )
-            session.clear()
-            session.permanent = True
-            if _get_totp() is None:
-                # No TOTP secret configured — skip 2FA
-                session['logged_in'] = True
-                _record_success(ip)
-                _notify_login_success()
-                try:
-                    from database import audit
-                    audit('auth.login_success', actor_ip=ip)
-                except Exception:
-                    pass
-                return redirect(next_url)
-            session['totp_pending'] = True
-            session['totp_next'] = next_url
-            return redirect(url_for('auth.verify_totp'))
-
-        _record_failure(ip)
-        _notify_login_failed(username)
-        try:
-            from database import audit
-            audit('auth.login_failed', actor_ip=ip,
-                  details=f'username={username!r}' if username else None)
-        except Exception:
-            pass
-        error = 'Invalid credentials.'
-
+    code = request.args.get('error', '')
+    error = _LOGIN_ERRORS.get(code, _LOGIN_ERRORS['failed']) if code else None
     return render_template(
         'login.html',
-        error    = error,
-        next_url = request.args.get('next', ''),
+        error      = error,
+        next_url   = request.args.get('next', ''),
+        configured = google_auth.is_configured(),
     )
 
 
-# ── Step 2: TOTP code ─────────────────────────────────────────────────────────
+# ── Google sign-in: leg 1 ─────────────────────────────────────────────────────
 
-@auth_bp.route('/login/verify', methods=['GET', 'POST'])
-def verify_totp():
-    if not session.get('totp_pending'):
-        return redirect(url_for('auth.login'))
-    if session.get('logged_in'):
-        return redirect(url_for('dashboard.index'))
+@auth_bp.route('/login/google')
+def google_start():
+    # A plain GET link, not a form POST: CSP `form-action 'self'` would block
+    # a form whose response redirects to accounts.google.com.
+    if not google_auth.is_configured():
+        return redirect(url_for('auth.login', error='not_configured'))
+    flow, url = google_auth.begin_flow()
+    flow['next'] = _safe_next(request.args.get('next'))
+    resp = redirect(url)
+    resp.set_cookie(
+        _FLOW_COOKIE, _flow_serializer().dumps(flow),
+        max_age  = google_auth.FLOW_TTL,
+        path     = _FLOW_COOKIE_PATH,
+        secure   = current_app.config['SESSION_COOKIE_SECURE'],
+        httponly = True,
+        samesite = 'Lax',
+    )
+    return resp
 
-    error = None
+
+# ── Google sign-in: leg 2 ─────────────────────────────────────────────────────
+
+@auth_bp.route('/login/google/callback')
+def google_callback():
+    """Google sends the browser back here with ?code&state (or ?error).
+    Success → session + a hop to the dashboard; anything else → /login?error=."""
     ip = _client_ip()
+    try:
+        flow = _flow_serializer().loads(
+            request.cookies.get(_FLOW_COOKIE, ''), max_age=google_auth.FLOW_TTL)
+    except BadSignature:   # also covers SignatureExpired
+        flow = None
 
-    if request.method == 'POST':
-        locked = _seconds_locked(ip)
-        if locked:
-            error = f'Too many failed attempts. Try again in {locked}s.'
-            return render_template('totp_verify.html', error=error), 429
-
-        raw_code = request.form.get('code', '').strip()
-        code     = raw_code.replace(' ', '').replace('-', '')
-        totp     = _get_totp()
-        # 6-digit numeric → TOTP path; anything longer/alphanumeric → backup code.
-        # Decoupling the two paths means a partial code typed into the TOTP box
-        # doesn't accidentally consume a backup code on the way to a failure.
-        is_numeric_6 = code.isdigit() and len(code) == 6
-        accepted = False
-        method   = ''
-        if is_numeric_6 and totp and totp.verify(code, valid_window=1):
-            accepted, method = True, 'totp'
-        elif not is_numeric_6 and _try_backup_code(raw_code):
-            accepted, method = True, 'backup_code'
-            try:
-                from notifications import send_notification
-                send_notification(
-                    'backup_code_used',
-                    f'🔑 A backup code was used to sign into traverse (IP `{ip}`)',
-                    severity='warning',
-                )
-            except Exception:
-                pass
-        if accepted:
-            next_url = session.pop('totp_next', '/')
-            session['totp_pending'] = False
-            session['logged_in'] = True
-            session.permanent = True
-            _record_success(ip)
-            _notify_login_success()
+    def fail(reason, detail, email=None):
+        current_app.logger.warning(
+            'google sign-in failed (%s) from %s: %s', reason, ip, detail)
+        # A callback hit with no flow cookie of ours isn't a sign-in attempt
+        # from a browser that started one, so it doesn't earn an audit row.
+        if flow is not None:
             try:
                 from database import audit
-                audit('auth.login_success', actor_ip=ip, details=method)
+                audit('auth.login_failed', actor_ip=ip,
+                      details=f'google:{reason}' + (f' {email}' if email else ''))
             except Exception:
                 pass
-            return redirect(_safe_next(next_url))
-        _record_failure(ip)
-        _notify_login_failed('totp')
-        try:
-            from database import audit
-            audit('auth.login_failed', actor_ip=ip, details='totp')
-        except Exception:
-            pass
-        error = 'Invalid code. Try again.'
+        # Only alert when a real Google identity was refused — those take a
+        # completed Google login each, so they can't be used to spam alerts.
+        if email:
+            _notify_login_failed(email)
+        resp = redirect(url_for('auth.login', error=reason))
+        resp.delete_cookie(_FLOW_COOKIE, path=_FLOW_COOKIE_PATH)
+        return resp
 
-    return render_template('totp_verify.html', error=error)
+    if flow is None:
+        return fail('expired', 'missing, tampered or expired flow cookie')
+    # The user backed out on Google's side (access_denied) or Google refused.
+    if request.args.get('error'):
+        return fail('denied', request.args.get('error'))
+    # State must match the cookie this browser got in google_start — that's
+    # what stops someone completing *their* login in *your* browser.
+    if not google_auth.state_matches(flow, request.args.get('state')):
+        return fail('expired', 'state mismatch')
+    code = request.args.get('code', '')
+    if not code:
+        return fail('failed', 'missing code')
+    if not google_auth.is_configured():
+        return fail('not_configured', 'config changed mid-login')
 
-
-# ── TOTP setup / QR display ───────────────────────────────────────────────────
-
-@auth_bp.route('/totp-setup')
-def totp_setup():
-    # Only fully authenticated admins can view the TOTP secret/QR. The
-    # earlier `totp_pending` gate let anyone with just the password fetch
-    # the seed and forever bypass 2FA.
-    if not session.get('logged_in'):
-        return redirect(url_for('auth.login'))
-
-    # When 2FA is enrolled via the new UI flow, send admins to the
-    # dedicated security page for backup-code management instead of the
-    # bare QR screen. The QR screen stays as a read-only fallback for
-    # env-based setups that haven't migrated yet.
     try:
-        from database import get_totp_config
-        cfg = get_totp_config()
+        email = google_auth.complete_flow(code, flow)
+    except google_auth.GoogleAuthError as e:
+        return fail(e.code, str(e), e.email)
+
+    session.clear()
+    session.permanent = True
+    session['logged_in'] = True
+    session['email'] = email
+    _notify_login_success(email)
+    try:
+        from database import audit
+        audit('auth.login_success', actor_ip=ip, details=f'google:{email}')
     except Exception:
-        cfg = {'secret': '', 'enrolled_at': None}
-    if cfg.get('secret'):
-        return redirect(url_for('security.index'))
-
-    secret = os.getenv('TOTP_SECRET', '')
-    if not secret:
-        # Neither DB nor env has a secret — kick off the UI enrol flow.
-        return redirect(url_for('security.enroll_totp_start'))
-    totp   = pyotp.TOTP(secret)
-    uri    = totp.provisioning_uri(name='admin', issuer_name='Traverse VPN')
-
-    img = qrcode.make(uri)
-    buf = io.BytesIO()
-    img.save(buf, format='PNG')
-    qr_b64 = base64.b64encode(buf.getvalue()).decode()
-
-    return render_template('totp_setup.html', secret=secret, qr_b64=qr_b64)
+        pass
+    # Not a 302: the session cookie is SameSite=Strict, and a redirect chain
+    # that started on accounts.google.com is cross-site all the way down, so
+    # the browser would withhold the brand-new cookie and bounce us back to
+    # /login. A page that navigates itself starts a fresh same-site request.
+    resp = current_app.make_response(render_template(
+        'login_complete.html', next_url=_safe_next(flow.get('next'))))
+    resp.delete_cookie(_FLOW_COOKIE, path=_FLOW_COOKIE_PATH)
+    return resp
 
 
 # ── Internal: session check for nginx auth_request ────────────────────────────
@@ -339,7 +230,8 @@ def auth_check():
 def logout():
     try:
         from database import audit
-        audit('auth.logout', actor_ip=_client_ip())
+        audit('auth.logout', actor_ip=_client_ip(),
+              details=f"google:{session['email']}" if session.get('email') else None)
     except Exception:
         pass
     session.clear()

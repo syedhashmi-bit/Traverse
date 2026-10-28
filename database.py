@@ -272,24 +272,6 @@ def migrate_db():
             )
         """)
 
-        # DB-backed 2FA. Single-row table (id=1) so SET-style updates are
-        # always safe and there's no path to multiple admin secrets coexisting.
-        # backup_codes is a JSON list of sha256 hex digests; codes are
-        # single-use and removed from the list on successful consume.
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS totp_settings (
-                id           INTEGER PRIMARY KEY CHECK (id = 1),
-                secret       TEXT    NOT NULL DEFAULT '',
-                backup_codes TEXT    NOT NULL DEFAULT '[]',
-                enrolled_at  TEXT,
-                updated_at   TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.execute(
-            "INSERT OR IGNORE INTO totp_settings (id, secret, backup_codes) "
-            "VALUES (1, '', '[]')"
-        )
-
         # ── Indexes (idempotent) ──────────────────────────────────────────
         for _idx_sql in (
             "CREATE INDEX IF NOT EXISTS idx_peers_enabled ON peers(enabled)",
@@ -330,7 +312,6 @@ def migrate_db():
             'pihole_down', 'pihole_recovered', 'peer_added', 'peer_deleted',
             'peer_killed', 'config_regenerated', 'psk_rotated',
             'login_success', 'login_failed',
-            'totp_enrolled', 'totp_disabled', 'backup_code_used',
             'peer_schedule_applied',
         ):
             conn.execute(
@@ -1144,87 +1125,6 @@ def count_audit_log(action_prefix=None):
         return conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
 
 
-# ── TOTP (DB-backed 2FA) ─────────────────────────────────────────────────────
-
-def get_totp_config():
-    """Return {'secret': str, 'backup_codes': [hashes], 'enrolled_at': str|None}.
-
-    `secret` is empty string when not enrolled. Backup codes are stored as
-    sha256 hex digests (one per code) so a DB leak doesn't reveal usable
-    codes. The id=1 row always exists (seeded in migrate_db).
-    """
-    import json as _json
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT secret, backup_codes, enrolled_at FROM totp_settings WHERE id = 1"
-        ).fetchone()
-    if not row:
-        return {'secret': '', 'backup_codes': [], 'enrolled_at': None}
-    try:
-        codes = _json.loads(row['backup_codes'] or '[]')
-        if not isinstance(codes, list):
-            codes = []
-    except Exception:
-        codes = []
-    return {
-        'secret':       row['secret'] or '',
-        'backup_codes': [c for c in codes if isinstance(c, str)],
-        'enrolled_at':  row['enrolled_at'],
-    }
-
-
-def set_totp_config(secret, backup_code_hashes):
-    """Enroll: persist secret + the hashed backup-code list. Bumps enrolled_at."""
-    import json as _json
-    from datetime import datetime
-    now = datetime.utcnow().isoformat()
-    payload = _json.dumps(list(backup_code_hashes or []))
-    with get_db() as conn:
-        conn.execute("""
-            UPDATE totp_settings
-               SET secret = ?, backup_codes = ?, enrolled_at = ?, updated_at = ?
-             WHERE id = 1
-        """, (secret or '', payload, now, now))
-
-
-def clear_totp_config():
-    """Disable DB-backed 2FA. Keeps the row (id=1) but zeros all fields."""
-    from datetime import datetime
-    now = datetime.utcnow().isoformat()
-    with get_db() as conn:
-        conn.execute("""
-            UPDATE totp_settings
-               SET secret = '', backup_codes = '[]', enrolled_at = NULL, updated_at = ?
-             WHERE id = 1
-        """, (now,))
-
-
-def consume_backup_code(code_hash):
-    """If `code_hash` is present in the stored list, remove it and return True.
-    Single-use semantics: a successful consume always shrinks the list."""
-    import json as _json
-    from datetime import datetime
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT backup_codes FROM totp_settings WHERE id = 1"
-        ).fetchone()
-        if not row:
-            return False
-        try:
-            codes = _json.loads(row['backup_codes'] or '[]')
-        except Exception:
-            codes = []
-        if code_hash not in codes:
-            return False
-        codes = [c for c in codes if c != code_hash]
-        conn.execute("""
-            UPDATE totp_settings
-               SET backup_codes = ?, updated_at = ?
-             WHERE id = 1
-        """, (_json.dumps(codes), datetime.utcnow().isoformat()))
-        return True
-
-
 # ── Per-peer schedules ───────────────────────────────────────────────────────
 
 def get_peer_schedule(peer_id):
@@ -1284,16 +1184,3 @@ def get_all_peer_schedules():
         """).fetchall()
     return [dict(r) for r in rows]
 
-
-def replace_backup_codes(backup_code_hashes):
-    """Replace the stored backup-code set without touching the secret."""
-    import json as _json
-    from datetime import datetime
-    payload = _json.dumps(list(backup_code_hashes or []))
-    now = datetime.utcnow().isoformat()
-    with get_db() as conn:
-        conn.execute("""
-            UPDATE totp_settings
-               SET backup_codes = ?, updated_at = ?
-             WHERE id = 1
-        """, (payload, now))

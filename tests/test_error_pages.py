@@ -111,12 +111,16 @@ def test_public_pages_get_no_chrome_context(
     assert chrome_calls == []
 
 
-def test_totp_pending_session_is_still_anonymous(
-        client, seeded, chrome_calls, rendered):
-    # Password OK but TOTP not yet entered → not logged in.
+@pytest.mark.parametrize('sess_data', [
+    # Password-era session: logged in, but no Google email attached.
+    {'logged_in': True},
+    # Email removed from TRAVERSE_ADMIN_EMAILS since this session started.
+    {'logged_in': True, 'email': 'removed@example.com'},
+])
+def test_session_off_the_allowlist_is_anonymous(
+        client, seeded, chrome_calls, rendered, sess_data):
     with client.session_transaction() as sess:
-        sess['totp_pending'] = True
-    assert client.get('/login/verify').status_code == 200
+        sess.update(sess_data)
     resp = client.get('/no-such-page')
     assert resp.status_code == 404
     _assert_no_leak(resp.get_data(as_text=True))

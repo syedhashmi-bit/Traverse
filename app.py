@@ -59,7 +59,6 @@ def create_app():
     from routes.notifications import notifications_bp
     from routes.pwa           import pwa_bp
     from routes.audit         import audit_bp
-    from routes.security      import security_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -76,7 +75,13 @@ def create_app():
     app.register_blueprint(notifications_bp)
     app.register_blueprint(pwa_bp)
     app.register_blueprint(audit_bp)
-    app.register_blueprint(security_bp)
+
+    # Sign-in is Google-only. Missing config doesn't stop the boot (the
+    # WireGuard poller and alerts still matter), but nobody can log in, so
+    # say exactly what's missing.
+    import google_auth
+    for problem in google_auth.config_problems():
+        app.logger.warning('Google sign-in not configured: %s', problem)
 
     from alerts import start_alerts
     start_alerts()
@@ -90,6 +95,9 @@ def create_app():
                 _version = _f.read().strip() or 'dev'
     except Exception:
         pass
+
+    from routes.auth import enforce_allowlist
+    app.before_request(enforce_allowlist)
 
     @app.before_request
     def _set_csp_nonce():
@@ -108,7 +116,7 @@ def create_app():
     def inject_globals():
         # App chrome data (VPN subnet + endpoint, WireGuard up/down, peer and
         # unseen-alert counts, Pi-hole link) is for logged-in admins only.
-        # Anonymous renders — /login, /login/verify, /offline, the public
+        # Anonymous renders — /login, /offline, the public
         # 404/500 pages — get none of it, and none of it is computed (no
         # `wg`/systemctl call, no DB count) for an unauthenticated request.
         # Only base.html uses these keys, and base.html is never rendered

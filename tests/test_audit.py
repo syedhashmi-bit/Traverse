@@ -16,26 +16,27 @@ def test_audit_helper_persists(app):
                    for r in rows)
 
 
-def test_login_success_writes_audit_row(client):
-    client.post(
-        '/login',
-        data={'username': 'admin', 'password': 'hunter2'},
-        headers=_csrf_hdrs('/login'),
-    )
+def test_login_success_writes_audit_row(client, fake_google):
+    fake_google.login(client)
     from database import get_audit_log
     rows = get_audit_log(action_prefix='auth.')
-    assert any(r['action'] == 'auth.login_success' for r in rows)
+    assert any(r['action'] == 'auth.login_success' and
+               r['details'] == 'google:admin@example.com' for r in rows)
 
 
-def test_login_failure_writes_audit_row(client):
-    client.post(
-        '/login',
-        data={'username': 'admin', 'password': 'wrong'},
-        headers=_csrf_hdrs('/login'),
-    )
+def test_login_failure_writes_audit_row(client, fake_google):
+    fake_google.login(client, email='stranger@gmail.com')
     from database import get_audit_log
     rows = get_audit_log(action_prefix='auth.')
-    assert any(r['action'] == 'auth.login_failed' for r in rows)
+    assert any(r['action'] == 'auth.login_failed' and
+               r['details'] == 'google:not_allowed stranger@gmail.com' for r in rows)
+
+
+def test_stray_callback_hit_writes_no_audit_row(client):
+    """No flow cookie → not a sign-in attempt; don't let bots fill the log."""
+    client.get('/login/google/callback?code=x&state=y')
+    from database import get_audit_log
+    assert get_audit_log(action_prefix='auth.') == []
 
 
 def test_peer_create_writes_audit_row(logged_in_client):

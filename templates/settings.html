@@ -113,41 +113,36 @@
     </div>
     {% endif %}
 
-    <!-- TOTP 2FA -->
+    <!-- Sign-in -->
     <div class="card">
       <div class="card-header">
-        <span class="card-title">Two-Factor Auth (TOTP)</span>
-        {% if totp_configured %}
-          <span class="badge badge-success">● active</span>
+        <span class="card-title">Sign-in (Google)</span>
+        {% if signin_problems %}
+          <span class="badge badge-warning">○ incomplete</span>
         {% else %}
-          <span class="badge badge-warning">○ not set</span>
+          <span class="badge badge-success">● active</span>
         {% endif %}
       </div>
       <div class="card-body">
-        {% if totp_enrolled %}
         <p class="text-sm text-muted" style="line-height:1.7;">
-          2FA is enrolled — every login requires a 6-digit code after the password.
-          {{ totp_codes_left }} backup code{{ '' if totp_codes_left == 1 else 's' }} remaining.
+          Only these Google accounts can sign in
+          (<code style="color:var(--accent)">TRAVERSE_ADMIN_EMAILS</code>).
+          The list is re-checked on every request, so removing an email and
+          restarting Traverse signs it out everywhere.
         </p>
-        <a href="{{ url_for('security.index') }}" class="btn btn-secondary btn-sm mt-12">
-          Manage 2FA →
-        </a>
-        {% elif totp_configured %}
-        <p class="text-sm text-muted" style="line-height:1.7;">
-          2FA is active via the legacy <code style="color:var(--accent)">TOTP_SECRET</code> env var.
-          Migrate to the UI flow to get backup codes and a disable button.
+        <ul class="text-sm" style="margin:10px 0 0 18px; line-height:1.8;">
+          {% for e in signin_emails %}
+          <li><code>{{ e }}</code>{% if e == signed_in_as %} <span class="text-muted">(you)</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+        <p class="text-sm text-muted" style="line-height:1.7; margin-top:12px;">
+          Authorized redirect URI on the Google OAuth client:<br>
+          <code style="color:var(--accent); word-break:break-all;">{{ signin_redirect }}</code>
         </p>
-        <a href="{{ url_for('security.index') }}" class="btn btn-secondary btn-sm mt-12">
-          Migrate to UI 2FA →
-        </a>
-        {% else %}
-        <p class="text-sm text-muted" style="line-height:1.7;">
-          Add a second factor to require a 6-digit code at every sign-in.
-          You'll also receive 10 single-use backup codes.
-        </p>
-        <a href="{{ url_for('security.index') }}" class="btn btn-primary btn-sm mt-12">
-          Enable 2FA →
-        </a>
+        {% if signin_problems %}
+        <ul class="text-sm" style="margin:10px 0 0 18px; line-height:1.8; color:var(--warning);">
+          {% for p in signin_problems %}<li>{{ p }}</li>{% endfor %}
+        </ul>
         {% endif %}
       </div>
     </div>

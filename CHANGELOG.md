@@ -2,6 +2,63 @@
 
 ## [Unreleased]
 
+### Changed — sign-in is Google-only (breaking)
+- **Sign in with Google replaces the username/password login.** Standard
+  OIDC authorization-code flow (new `google_auth.py`): `/login/google` sends
+  the browser to Google with a random `state`, a `nonce` and a PKCE S256
+  challenge; `/login/google/callback` swaps the code for an ID token
+  server-to-server and checks its RS256 signature against Google's JWKS
+  (cached per worker, re-fetched on an unknown `kid` at most once a minute),
+  plus `aud`, `iss`, `exp`, `nonce` and `email_verified`. Mirrors othoni's
+  0.78.0 sign-in.
+- **Access is an email allowlist in `.env`** — `TRAVERSE_ADMIN_EMAILS`
+  (comma-separated, case-insensitive). It is re-checked on every request by an
+  app-wide `before_request`, so removing an email and restarting signs it out
+  everywhere; this also retires every pre-upgrade password session on deploy.
+  No read-only role: every page can reveal peer private keys.
+- **New required `.env` keys:** `TRAVERSE_PUBLIC_URL` (the https origin —
+  builds the redirect URI `<url>/login/google/callback`),
+  `TRAVERSE_GOOGLE_CLIENT_ID`, `TRAVERSE_GOOGLE_CLIENT_SECRET`,
+  `TRAVERSE_ADMIN_EMAILS`. Until all four are set the app still boots (the
+  WireGuard poller keeps running), logs exactly what's missing, and the login
+  button is disabled.
+- The in-flight login (state, nonce, PKCE verifier, post-login path) lives in
+  a signed, 10-minute, `HttpOnly`, `SameSite=Lax` cookie scoped to
+  `/login/google` — not server memory, since gunicorn's 2 workers can split
+  the two legs. One-shot: cleared by the callback.
+- The session cookie stays `SameSite=Strict`. A Strict cookie is withheld on
+  a redirect chain initiated from accounts.google.com, so the callback answers
+  with a tiny self-navigating page (`login_complete.html`, meta refresh)
+  instead of a 302 — verified in Chrome: with a 302 the user lands back on
+  `/login` right after a successful sign-in.
+- Settings: the "Two-Factor Auth" card is now **Sign-in (Google)** — the
+  allowlist, the exact redirect URI to register, and anything missing.
+- `install.sh` asks for the Google client ID / secret / allowed emails
+  (derives `TRAVERSE_PUBLIC_URL` from the domain) instead of an admin password.
+
+### Removed
+- Password login, the per-IP login throttle, TOTP 2FA (`/login/verify`,
+  `/totp-setup`), backup codes and the `/settings/security` page, along with
+  `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `TOTP_SECRET` and the `pyotp`
+  dependency. The `totp_settings` table is no longer created; an existing one
+  is left untouched and unused. Two-factor is now whatever the Google account
+  enforces.
+
+### Security
+- `_safe_next` also rejects backslashes and control characters — browsers read
+  `/\evil.example` as `//evil.example`, an open redirect after sign-in.
+- Failed-login alerts (`login_failed`) only fire when Google vouched for a real
+  identity that isn't allowed (one completed Google login each, so they can't
+  be spammed); stray callback hits without a flow cookie aren't audited.
+
+### Tests
+- `tests/test_auth.py` rewritten around a fake Google (token endpoint + JWKS
+  minting real RS256 ID tokens; checks client creds, redirect URI and PKCE):
+  bad signature / unknown kid / wrong aud / wrong iss / nonce / expiry /
+  missing claims / HS256 confusion, state mismatch, login CSRF, tampered and
+  stale flow cookies, replay, open redirects, allowlist revocation.
+  TOTP suites removed; CSRF tests now post to `/logout` (suite: 228).
+
 ### Added
 - **`GET /api/public-stats`** — token-gated, counts-only stats for an external
   status page: `{"peers_total", "peers_online", "traffic_30d_bytes",

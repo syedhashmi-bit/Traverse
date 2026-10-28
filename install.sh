@@ -8,7 +8,9 @@
 #   sudo ./install.sh
 #
 # Unattended (pre-set any prompt as an env var), e.g.:
-#   sudo DOMAIN=vpn.example.com ADMIN_PASSWORD='s3cret' RUN_CERTBOT=yes ./install.sh
+#   sudo DOMAIN=vpn.example.com RUN_CERTBOT=yes \
+#        TRAVERSE_GOOGLE_CLIENT_ID='….apps.googleusercontent.com' \
+#        TRAVERSE_GOOGLE_CLIENT_SECRET='…' TRAVERSE_ADMIN_EMAILS='you@example.com' ./install.sh
 #
 set -euo pipefail
 
@@ -44,14 +46,25 @@ EGRESS_IF="$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'dev \K\S+' | head -1 |
 echo
 info "Traverse installer  —  $PROJECT_DIR"
 ask DOMAIN         "Domain for the dashboard (blank = use IP, HTTP only)" ""
-ask ADMIN_USERNAME "Admin username" "admin"
-if [[ -z ${ADMIN_PASSWORD:-} ]]; then
-  if [[ -t 0 ]]; then
-    read -rsp "$(printf '%s?%s Admin password: ' "$c_b" "$c_0")" ADMIN_PASSWORD; echo
-    [[ -n $ADMIN_PASSWORD ]] || die "Admin password cannot be empty."
-  else
-    die "ADMIN_PASSWORD must be set when running without a TTY."
+# Sign-in is Google-only, and Google only redirects to https:// on a real
+# domain. Without the client details the dashboard installs fine but nobody
+# can log in until they're added to .env.
+TRAVERSE_PUBLIC_URL="${TRAVERSE_PUBLIC_URL:-}"
+if [[ -f "$PROJECT_DIR/.env" ]]; then
+  :  # existing .env is kept as-is (step 4), sign-in settings included
+elif [[ -n $DOMAIN ]] && ! is_ip "$DOMAIN"; then
+  TRAVERSE_PUBLIC_URL="${TRAVERSE_PUBLIC_URL:-https://${DOMAIN}}"
+  info "Google sign-in: create an OAuth client (Web application) at"
+  echo  "    https://console.cloud.google.com/apis/credentials"
+  echo  "    with Authorized redirect URI  ${TRAVERSE_PUBLIC_URL}/login/google/callback"
+  echo  "    (leave these blank to fill in .env later)"
+  ask TRAVERSE_GOOGLE_CLIENT_ID "Google OAuth client ID" ""
+  if [[ -z ${TRAVERSE_GOOGLE_CLIENT_SECRET:-} && -n $TRAVERSE_GOOGLE_CLIENT_ID && -t 0 ]]; then
+    read -rsp "$(printf '%s?%s Google OAuth client secret: ' "$c_b" "$c_0")" TRAVERSE_GOOGLE_CLIENT_SECRET; echo
   fi
+  ask TRAVERSE_ADMIN_EMAILS "Google account email(s) allowed to sign in (comma-separated)" ""
+else
+  warn "No domain — Google sign-in needs one with HTTPS. Set the TRAVERSE_* sign-in vars in .env once you have it."
 fi
 ask WG_INTERFACE "WireGuard interface" "wg0"
 ask WG_PORT      "WireGuard UDP port"  "51820"
@@ -122,8 +135,12 @@ SECRET_KEY=${SECRET_KEY}
 PORT=5000
 DATABASE_PATH=${PROJECT_DIR}/database.db
 
-ADMIN_USERNAME=${ADMIN_USERNAME}
-ADMIN_PASSWORD=${ADMIN_PASSWORD}
+# Google sign-in — see README "Google sign-in". Redirect URI:
+#   <TRAVERSE_PUBLIC_URL>/login/google/callback
+TRAVERSE_PUBLIC_URL=${TRAVERSE_PUBLIC_URL}
+TRAVERSE_GOOGLE_CLIENT_ID=${TRAVERSE_GOOGLE_CLIENT_ID:-}
+TRAVERSE_GOOGLE_CLIENT_SECRET=${TRAVERSE_GOOGLE_CLIENT_SECRET:-}
+TRAVERSE_ADMIN_EMAILS=${TRAVERSE_ADMIN_EMAILS:-}
 
 WG_INTERFACE=${WG_INTERFACE}
 WG_PORT=${WG_PORT}
@@ -218,7 +235,13 @@ scheme=http
 echo
 ok "Traverse is installed and running."
 printf '   %sDashboard%s  %s://%s/\n' "$c_g" "$c_0" "$scheme" "$ENDPOINT"
-printf '   %sLogin%s      %s  (the password you set)\n' "$c_g" "$c_0" "$ADMIN_USERNAME"
+envval() { grep -E "^$1=" "$PROJECT_DIR/.env" 2>/dev/null | tail -1 | cut -d= -f2-; }
+if [[ -n $(envval TRAVERSE_PUBLIC_URL) && -n $(envval TRAVERSE_GOOGLE_CLIENT_ID) &&
+      -n $(envval TRAVERSE_GOOGLE_CLIENT_SECRET) && -n $(envval TRAVERSE_ADMIN_EMAILS) ]]; then
+  printf '   %sSign in%s    with Google as %s\n' "$c_g" "$c_0" "$(envval TRAVERSE_ADMIN_EMAILS)"
+else
+  warn "Google sign-in isn't configured yet — set the TRAVERSE_* vars in $PROJECT_DIR/.env, then: systemctl restart traverse"
+fi
 echo
 info "Next: open the dashboard and add your first peer. Handy commands:"
 echo "    systemctl status traverse wg-quick@${WG_INTERFACE} nginx"
