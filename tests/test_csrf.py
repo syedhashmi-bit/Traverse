@@ -2,17 +2,16 @@
 
 The check rejects state-changing requests whose Origin/Referer hostname
 doesn't match the request's own host. Last week's Origin: null bug (from
-Referrer-Policy: no-referrer) made every login 403; these tests guard
+Referrer-Policy: no-referrer) made every form post 403; these tests guard
 against both regressions of the fix and weakening of the check itself.
 """
 
 
 def test_post_with_matching_origin_passes_csrf(client):
-    """Origin from our own host → CSRF check allows it (login still
-    fails the credentials check, but does NOT 403)."""
+    """Origin from our own host → CSRF check allows it (logout runs and
+    redirects, it does NOT 403)."""
     resp = client.post(
-        '/login',
-        data={'username': 'nobody', 'password': 'nobody'},
+        '/logout',
         headers={'Origin': 'http://localhost'},
     )
     assert resp.status_code != 403
@@ -20,8 +19,7 @@ def test_post_with_matching_origin_passes_csrf(client):
 
 def test_post_with_cross_origin_origin_is_blocked(client):
     resp = client.post(
-        '/login',
-        data={'username': 'admin', 'password': 'hunter2'},
+        '/logout',
         headers={'Origin': 'https://evil.example'},
     )
     assert resp.status_code == 403
@@ -30,8 +28,7 @@ def test_post_with_cross_origin_origin_is_blocked(client):
 
 def test_post_with_cross_origin_referer_is_blocked(client):
     resp = client.post(
-        '/login',
-        data={'username': 'admin', 'password': 'hunter2'},
+        '/logout',
         headers={'Referer': 'https://evil.example/login'},
     )
     assert resp.status_code == 403
@@ -40,10 +37,7 @@ def test_post_with_cross_origin_referer_is_blocked(client):
 def test_post_with_no_origin_or_referer_is_allowed(client):
     """SameSite=Strict + no Origin/Referer (curl-like) is allowed —
     a browser navigating cross-site wouldn't even send the cookie."""
-    resp = client.post(
-        '/login',
-        data={'username': 'nobody', 'password': 'nobody'},
-    )
+    resp = client.post('/logout')
     assert resp.status_code != 403
 
 

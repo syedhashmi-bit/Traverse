@@ -12,8 +12,8 @@ Empty. New near-term items land here as they come up.
 
 ## Reliability & quality
 
-- **Pytest suite — 175 tests** across auth, TOTP (env + UI enrolment + backup
-  codes), CSRF, peers (CRUD + bulk + PSK rotation + per-peer schedules),
+- **Pytest suite — 228 tests** across Google sign-in (against a fake Google
+  that mints real RS256 ID tokens), CSRF, peers (CRUD + bulk + PSK rotation + per-peer schedules),
   notifications dispatch, audit log, port-forwards, the alerts poller,
   the bandwidth-anomaly heuristic, the Pi-hole v6 API client, the
   wireguard CLI wrappers, backup export, and `MAX_PEERS` handling.

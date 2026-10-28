@@ -85,8 +85,8 @@
 - **WireGuard service control** — start/stop/restart from the UI
 
 ### Auth & security
-- **Session-based login** with timing-safe `hmac.compare_digest`
-- **TOTP 2FA** (Google Authenticator / Authy) — optional, set `TOTP_SECRET`
+- **Sign in with Google — the only way in.** No password to leak or brute-force; two-factor is whatever the Google account enforces (turn on 2-Step Verification). Only emails in `TRAVERSE_ADMIN_EMAILS` get in, re-checked on every request
+- **Hardened OIDC flow** — PKCE (S256), `state` pinned to the browser, `nonce` bound into the ID token, RS256 signature checked against Google's published keys, plus audience / issuer / expiry / verified-email checks
 - **All secrets live in `.env`** — gitignored from commit 1; private keys never appear on the peer list
 
 ### Performance
@@ -115,7 +115,7 @@
 | Caching | Flask-Caching (SimpleCache) |
 | WireGuard | `wg` / `wg-quick` CLI (wireguard-tools) |
 | QR codes | `qrcode[pil]` + Pillow |
-| 2FA | `pyotp` (TOTP / RFC 6238) |
+| Sign-in | Google OIDC — `PyJWT[crypto]` for ID-token verification, stdlib `urllib` for the rest |
 | Notifications | Email (SMTP), Telegram, Discord — stdlib only (`smtplib`, `urllib.request`) |
 | Pi-hole | v6 API integration (session token + JSON) |
 | Frontend | Custom dark CSS — no JS framework, no external CDN |
@@ -147,15 +147,18 @@ cd /var/www/traverse
 sudo ./install.sh
 ```
 
-It installs the dependencies, creates the Python venv, generates the WireGuard server keys + `/etc/wireguard/<interface>.conf` (default `wg0`) (auto-detecting your egress interface), writes `.env` with a freshly generated `SECRET_KEY` (prompting only for an admin password and, optionally, a domain), installs the systemd service + nginx config, adds a swapfile on small boxes, and — if you give it a domain — obtains a free HTTPS certificate via certbot. It's **safe to re-run** (existing keys / `.env` / WireGuard config are kept).
+It installs the dependencies, creates the Python venv, generates the WireGuard server keys + `/etc/wireguard/<interface>.conf` (default `wg0`) (auto-detecting your egress interface), writes `.env` with a freshly generated `SECRET_KEY` (prompting for a domain and your Google sign-in details — see [Google sign-in](#google-sign-in)), installs the systemd service + nginx config, adds a swapfile on small boxes, and — if you give it a domain — obtains a free HTTPS certificate via certbot. It's **safe to re-run** (existing keys / `.env` / WireGuard config are kept).
 
 Unattended example:
 
 ```bash
-sudo DOMAIN=vpn.example.com ADMIN_PASSWORD='change-me' RUN_CERTBOT=yes ./install.sh
+sudo DOMAIN=vpn.example.com RUN_CERTBOT=yes \
+     TRAVERSE_GOOGLE_CLIENT_ID='….apps.googleusercontent.com' \
+     TRAVERSE_GOOGLE_CLIENT_SECRET='…' \
+     TRAVERSE_ADMIN_EMAILS='you@example.com' ./install.sh
 ```
 
-Then open the printed URL, log in, and add your first peer. To enable Pi-hole ad-blocking, install Pi-hole separately and set the `PIHOLE_*` vars in `.env`.
+Then open the printed URL, sign in with Google, and add your first peer. To enable Pi-hole ad-blocking, install Pi-hole separately and set the `PIHOLE_*` vars in `.env`.
 
 ---
 
@@ -237,8 +240,44 @@ nano .env
 Fill in every required variable — see the [Environment Variables](#environment-variables) table below. At minimum set:
 
 - `SECRET_KEY` — generate one with `python3 -c "import secrets; print(secrets.token_hex(32))"`
-- `ADMIN_PASSWORD` — change from the default
 - `WG_ENDPOINT` — your VPS public IP or domain name
+- the four `TRAVERSE_*` sign-in variables — see [Google sign-in](#google-sign-in)
+
+---
+
+## Google sign-in
+
+Sign-in is Google-only, and it needs a domain served over HTTPS (Google
+won't redirect to a bare IP or plain `http://`).
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+   → **APIs & Services → Credentials → Create credentials → OAuth client ID**,
+   pick **Web application** and add one **Authorized redirect URI**:
+
+   ```
+   https://<your-traverse-host>/login/google/callback
+   ```
+
+   (Already have a Google Cloud project for another app? Add a new client
+   there — the consent screen is shared, the client and its secret aren't.
+   If the consent screen is in *Testing*, add yourself as a test user.)
+
+2. Set in `.env` and restart Traverse:
+
+   ```bash
+   TRAVERSE_PUBLIC_URL=https://<your-traverse-host>
+   TRAVERSE_GOOGLE_CLIENT_ID=<client id>.apps.googleusercontent.com
+   TRAVERSE_GOOGLE_CLIENT_SECRET=<client secret>
+   TRAVERSE_ADMIN_EMAILS=you@example.com            # comma-separated
+   ```
+
+Only those emails can sign in; any other Google account is turned away. The
+list is checked on every request, so removing an email and restarting
+Traverse signs it out everywhere, even with a session still open. There are
+no read-only accounts: every page can reveal peer private keys, so anyone on
+the list has full access. **Settings → Sign-in (Google)** shows the current
+list and the exact redirect URI the server expects. Until all four variables
+are set, the login button is disabled and the startup log says what's missing.
 
 ---
 
@@ -249,8 +288,10 @@ All configuration lives in `.env`. Never commit this file.
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `SECRET_KEY` | **yes** | — | Random 32+ char string used to sign Flask sessions. Generate: `python3 -c "import secrets; print(secrets.token_hex(32))"` |
-| `ADMIN_USERNAME` | **yes** | `admin` | Dashboard login username |
-| `ADMIN_PASSWORD` | **yes** | — | Dashboard login password — **change this** |
+| `TRAVERSE_PUBLIC_URL` | **yes** | — | The `https://` origin browsers use (e.g. `https://vpn.example.com`, no trailing path). Builds the Google redirect URI |
+| `TRAVERSE_GOOGLE_CLIENT_ID` | **yes** | — | Google OAuth "Web application" client ID |
+| `TRAVERSE_GOOGLE_CLIENT_SECRET` | **yes** | — | Its client secret |
+| `TRAVERSE_ADMIN_EMAILS` | **yes** | — | Comma-separated Google account emails allowed to sign in |
 | `WG_ENDPOINT` | **yes** | — | Your VPS public IP or domain (put into every peer's client config) |
 | `WG_INTERFACE` | no | `wg1` | WireGuard interface name |
 | `WG_PORT` | no | `51821` | UDP port WireGuard listens on |
@@ -258,7 +299,6 @@ All configuration lives in `.env`. Never commit this file.
 | `WG_SERVER_VPN_IP` | no | `10.9.0.1` | Server's own VPN IP — skipped during peer IP allocation |
 | `WG_DNS` | no | `1.1.1.1` | DNS server pushed to clients in their config |
 | `DATABASE_PATH` | no | `database.db` | Path to the SQLite file (relative to project root) |
-| `TOTP_SECRET` | no | — | Enables TOTP 2FA. Generate: `python3 -c "import pyotp; print(pyotp.random_base32())"` then scan the QR at `/totp-setup` |
 | `TELEGRAM_BOT_TOKEN` | no | — | Legacy Telegram bot token (used by the early-boot WG-down alerter); both must be set to enable |
 | `TELEGRAM_CHAT_ID` | no | — | Legacy Telegram chat ID |
 | `ALERT_INACTIVE_HOURS` | no | `0` (disabled) | Hours of inactivity before a peer triggers an alert |
@@ -281,7 +321,7 @@ source venv/bin/activate
 python app.py   # listens on 0.0.0.0:5000
 ```
 
-Open `http://localhost:5000` — log in with your `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
+Open `http://localhost:5000` and sign in with Google (for local dev, set `TRAVERSE_PUBLIC_URL=http://localhost:5000` and register `http://localhost:5000/login/google/callback` on the Google client — Google allows plain HTTP for `localhost` only).
 
 ### Production (systemd + gunicorn + nginx)
 
@@ -391,17 +431,6 @@ Certbot will automatically configure HTTPS and set up auto-renewal.
 
 ## Optional Features
 
-### TOTP Two-Factor Authentication
-
-1. Generate a secret and add it to `.env`:
-   ```bash
-   python3 -c "import pyotp; print(pyotp.random_base32())"
-   # → add TOTP_SECRET=<output> to .env
-   ```
-2. Restart the app: `systemctl restart traverse`
-3. Open `/totp-setup` in your browser — scan the QR code with Google Authenticator or Authy
-4. From now on, login requires username + password + 6-digit TOTP code
-
 ### Telegram Alerts
 
 1. Create a bot via [@BotFather](https://t.me/BotFather) and copy the token
@@ -467,8 +496,9 @@ traverse/
 │                           # peer connect/disconnect, bandwidth anomaly, expiry,
 │                           # Pi-hole liveness, location tracking
 ├── notifications.py        # send_notification() + Email/Telegram/Discord senders
+├── google_auth.py          # Google OIDC: PKCE flow, ID-token checks, email allowlist
 ├── routes/
-│   ├── auth.py             # /login, /login/verify, /totp-setup, login_required
+│   ├── auth.py             # /login, Google sign-in + callback, logout, login_required
 │   ├── dashboard.py        # GET / — NOC dashboard
 │   ├── peers.py            # Peer CRUD + wizard + bulk actions + CSV export
 │   ├── api.py              # All JSON endpoints (stats, health, pihole, ping, etc.)
@@ -491,7 +521,7 @@ traverse/
 │   ├── port_forwards/index.html
 │   ├── notifications.html, settings.html, map.html, topology.html,
 │   ├── alerts.html, history.html, logs.html, about.html, offline.html
-│   ├── login.html, totp_{setup,verify}.html
+│   ├── login.html, login_complete.html
 │   └── 404.html, 500.html
 ├── static/
 │   ├── css/{style.css, leaflet.min.css}
@@ -516,8 +546,9 @@ traverse/
 - **No shell injection** — all `subprocess` calls use list form (`shell=False`)
 - **Peer name validation** — enforced against `^[a-zA-Z0-9_\-]{1,64}$`
 - **Preshared keys** are written to a temp file during `wg set` to keep them off the process argument list
-- **Credential comparison** uses `hmac.compare_digest` (timing-safe; prevents timing oracle attacks)
-- **Session expiry** — `session.permanent = False` so sessions die when the browser closes
+- **Google-only sign-in** — no password exists to phish, leak or brute-force. The OIDC code flow uses PKCE (S256), a `state` bound to the browser by a signed, path-scoped cookie (stops login CSRF), and a `nonce` bound into the ID token; the ID token's RS256 signature is checked against Google's published keys along with audience, issuer, expiry and `email_verified`
+- **Email allowlist re-checked on every request** — removing an address from `TRAVERSE_ADMIN_EMAILS` and restarting ends its sessions immediately
+- **Session cookie** is `Secure`, `HttpOnly`, `SameSite=Strict` and expires after 12 h. Because a Strict cookie is withheld on a redirect chain that started on accounts.google.com, the callback answers with a tiny self-navigating page instead of a 302
 - **Secrets in `.env` only** — no credentials in code or the database
 - **20-peer cap** (constant `MAX_PEERS = 20` in `routes/peers.py`) — enforced server-side in the create route. Tune to fit your subnet.
 - **CSRF** — single-user / session-only deployment. CSRF tokens not currently in place; consider `flask-wtf` if multi-user.

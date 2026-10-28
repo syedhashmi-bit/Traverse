@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {# Same-site self-navigation so the SameSite=Strict session cookie set on
+     this response is sent with the next request — see google_callback. #}
+  <meta http-equiv="refresh" content="0;url={{ next_url }}">
+  <title>Signing in — Traverse</title>
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <p>Signed in — <a href="{{ next_url }}">continue to the dashboard</a>.</p>
+</body>
+</html>

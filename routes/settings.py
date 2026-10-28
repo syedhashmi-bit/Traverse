@@ -4,13 +4,14 @@ import os
 import re
 import subprocess
 from datetime import datetime
-from flask import Blueprint, make_response, render_template, request, redirect, url_for, flash
+from flask import Blueprint, make_response, render_template, request, redirect, url_for, flash, session
 from dotenv import load_dotenv
 load_dotenv()
 from wireguard import (
     get_interface_status, get_server_public_key,
     WG_INTERFACE, WG_SUBNET, WG_SERVER_IP, WG_ENDPOINT, WG_PORT, WG_DNS,
 )
+import google_auth
 from routes.auth import login_required
 
 # Match the regex enforced by routes/peers.py — backup-import must apply the
@@ -72,18 +73,6 @@ def index():
     # Generate server-side wg0.conf snippet for reference
     server_conf_snippet = _build_server_conf_snippet(server_pub)
 
-    totp_secret_env  = os.getenv('TOTP_SECRET', '').strip()
-    try:
-        from database import get_totp_config
-        _totp_cfg = get_totp_config()
-    except Exception:
-        _totp_cfg = {'secret': '', 'backup_codes': []}
-    totp_enrolled    = bool(_totp_cfg.get('secret'))
-    totp_codes_left  = len(_totp_cfg.get('backup_codes') or [])
-    # `totp_configured` keeps the old name so existing template logic still
-    # works during the migration. True whenever 2FA is active via either path.
-    totp_configured  = totp_enrolled or bool(totp_secret_env)
-
     from database import get_speedtest_results
     speedtest_results = get_speedtest_results(limit=30)
 
@@ -98,9 +87,10 @@ def index():
         endpoint           = WG_ENDPOINT,
         wg_port            = WG_PORT,
         dns                = WG_DNS,
-        totp_configured    = totp_configured,
-        totp_enrolled      = totp_enrolled,
-        totp_codes_left    = totp_codes_left,
+        signin_emails      = google_auth.config()['admins'],
+        signin_redirect    = google_auth.redirect_uri(),
+        signin_problems    = google_auth.config_problems(),
+        signed_in_as       = session.get('email', ''),
         speedtest_results  = speedtest_results,
         pihole_enabled     = PIHOLE_ENABLED,
         pihole_status      = _pihole_status_detail(),
