@@ -43,7 +43,7 @@
 - **Real-time event feed** — connect/disconnect/kill stream on the dashboard, polls every 30 s
 - **Per-peer 24-hour bandwidth chart and 30-day daily aggregates**
 - **Sparkline canvases** per peer row showing recent throughput
-- **Connection map** — Leaflet world map with peer markers color-coded by tunnel mode (GeoIP via ipapi.co, 1-hour cache)
+- **Connection map** — Leaflet world map with peer markers color-coded by tunnel mode (GeoIP via ipapi.co → ipwho.is → GeoJS fallback, cached 24 h per peer; keyless Esri tiles)
 - **Topology view** — radial canvas diagram with animated dashed lines on active peers and a slow-rotating server ring
 
 ### Pi-hole integration (v6 API)
@@ -53,7 +53,7 @@
 - Per-peer DNS query log on the peer detail page
 
 ### Notifications & alerts
-- **Multi-channel notifications** — Email (SMTP), Telegram, and Discord at `/notifications`. Per-event toggles for 15 event types. 500-row send log with success/error breakdown.
+- **Multi-channel notifications** — Email (SMTP), Telegram, and Discord at `/notifications`. Per-event toggles for 16 event types (including Google sign-ins and refused accounts). 500-row send log with success/error breakdown.
 - **Alert feed** at `/alerts` — severity-coded; mark-seen / dismiss
 - **Connection history log** at `/history`
 - **Browser push + sound alerts** — opt-in; Web Audio tones on connect/disconnect
@@ -81,7 +81,9 @@
 - **Port forwarding** — DNAT iptables rules at `/port-forwards/`; persisted to `/etc/iptables/rules.v4`
 - **System log viewer** at `/logs` (live tail with filter for traverse + WireGuard)
 - **Backup/restore** — JSON export of all peers/events (private keys stripped)
-- **Speedtest** widget — kicks off `speedtest-cli`, persists last 5 results
+- **Speedtest** widget — kicks off `speedtest-cli`, keeps the last 50 results
+- **Audit log** at `/audit` (+ CSV) — sign-ins with the Google account used, refused accounts, and admin actions
+- **Public stats endpoint** — optional token-gated `GET /api/public-stats` (counts only) for an external status page
 - **WireGuard service control** — start/stop/restart from the UI
 
 ### Auth & security
@@ -131,7 +133,9 @@
 - **Python**: 3.12+
 - **WireGuard**: `apt install wireguard`
 - **Privileges**: must run as `root` (needs access to `wg`, `wg-quick`, and `systemctl`)
-- **Ports**: UDP `51821` open for WireGuard; TCP `443`/`80` open for the web UI (if using nginx + HTTPS)
+- **A domain with HTTPS** for the dashboard — Google sign-in won't redirect to a bare IP or plain `http://` (certbot via the installer is fine)
+- **A Google account** to create a free OAuth client in Google Cloud Console — see [Google sign-in](#google-sign-in)
+- **Ports**: UDP `51821` open for WireGuard; TCP `443`/`80` open for the web UI
 
 ---
 
@@ -305,6 +309,8 @@ All configuration lives in `.env`. Never commit this file.
 | `PIHOLE_ENABLED` | no | — | Set to `true` / `1` / `yes` to enable the Pi-hole integration |
 | `PIHOLE_PASSWORD` | no | — | Pi-hole admin password (used for the v6 API auth dance) |
 | `PIHOLE_URL` | no | `http://10.9.0.1:8088` | Pi-hole/FTL **API** base, talked to directly by the backend (no `/api` suffix — it's appended) |
+| `MAX_PEERS` | no | `20` | Peer cap, clamped to 1–50 |
+| `TRAVERSE_PUBLIC_STATS_TOKEN` | no | — | Bearer token for `GET /api/public-stats` (counts only). Unset → the endpoint 404s |
 | `PIHOLE_WEB_URL` | no | `/pihole` | User-facing admin **link** in the UI (the reverse-proxied, auth-gated path). Relative `/pihole` resolves to the current host |
 
 > **Notifications module** (Email, Telegram, Discord at `/notifications`) — the canonical config store is the database (edit via the UI). `.env` keys (`NOTIFY_EMAIL_*`, `NOTIFY_TELEGRAM_*`, `NOTIFY_DISCORD_WEBHOOK`) are bootstrap fallbacks only. See `.env.example` for the full list.
@@ -496,6 +502,7 @@ traverse/
 │                           # peer connect/disconnect, bandwidth anomaly, expiry,
 │                           # Pi-hole liveness, location tracking
 ├── notifications.py        # send_notification() + Email/Telegram/Discord senders
+├── schedules.py            # Per-peer allowed-time window helpers
 ├── google_auth.py          # Google OIDC: PKCE flow, ID-token checks, email allowlist
 ├── routes/
 │   ├── auth.py             # /login, Google sign-in + callback, logout, login_required
@@ -510,7 +517,8 @@ traverse/
 │   ├── port_forwards.py    # DNAT rules CRUD
 │   ├── logs.py             # System log tail (traverse + WireGuard)
 │   ├── about.py            # Version + changelog page
-│   ├── settings.py         # WG service control, backup/restore, Pi-hole controls
+│   ├── settings.py         # WG service control, backup/restore, Pi-hole, sign-in card
+│   ├── audit.py            # /audit log + /audit.csv
 │   └── pwa.py              # /manifest.json, /sw.js, /offline (public, no auth)
 ├── templates/
 │   ├── base.html           # Sidebar + topbar + bottom nav + help overlay +
@@ -522,7 +530,7 @@ traverse/
 │   ├── notifications.html, settings.html, map.html, topology.html,
 │   ├── alerts.html, history.html, logs.html, about.html, offline.html
 │   ├── login.html, login_complete.html
-│   └── 404.html, 500.html
+│   └── 404.html, 500.html, error_public.html
 ├── static/
 │   ├── css/{style.css, leaflet.min.css}
 │   ├── js/{app.js, chart.min.js, leaflet.min.js}
@@ -531,6 +539,9 @@ traverse/
 │   ├── manifest.json       # PWA Web App Manifest
 │   ├── sw.js               # Service worker (network-first, /api/* always fresh)
 │   └── favicon.ico
+├── install.sh              # One-command Debian/Ubuntu installer
+├── deploy/                 # systemd unit + nginx templates used by install.sh
+├── tests/                  # pytest suite (wg stubbed, Google faked)
 ├── .env.example            # Environment variable template (safe to commit)
 ├── requirements.txt        # Python dependencies
 ├── VERSION                 # Plain text — current version
@@ -550,8 +561,8 @@ traverse/
 - **Email allowlist re-checked on every request** — removing an address from `TRAVERSE_ADMIN_EMAILS` and restarting ends its sessions immediately
 - **Session cookie** is `Secure`, `HttpOnly`, `SameSite=Strict` and expires after 12 h. Because a Strict cookie is withheld on a redirect chain that started on accounts.google.com, the callback answers with a tiny self-navigating page instead of a 302
 - **Secrets in `.env` only** — no credentials in code or the database
-- **20-peer cap** (constant `MAX_PEERS = 20` in `routes/peers.py`) — enforced server-side in the create route. Tune to fit your subnet.
-- **CSRF** — single-user / session-only deployment. CSRF tokens not currently in place; consider `flask-wtf` if multi-user.
+- **Peer cap** — `MAX_PEERS` env var (default 20, clamped to 1–50, read in `wireguard.py`), enforced server-side on every create path
+- **CSRF** — the `SameSite=Strict` session cookie plus an Origin/Referer host check on every POST/PUT/PATCH/DELETE. No per-form tokens; every allowlisted account is a full admin
 
 ---
 
