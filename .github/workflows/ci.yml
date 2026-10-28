@@ -24,7 +24,7 @@ jobs:
       - name: Syntax check
         run: |
           python -m py_compile app.py database.py wireguard.py alerts.py \
-                                notifications.py cache_ext.py routes/*.py
+                                notifications.py cache_ext.py google_auth.py routes/*.py
 
       - name: Run pytest
         run: pytest -q
@@ -32,8 +32,6 @@ jobs:
       - name: Smoke test app factory
         env:
           SECRET_KEY: ci-secret-key-not-for-prod-xxxxxxxxxxxxxxxxxxxx
-          ADMIN_USERNAME: admin
-          ADMIN_PASSWORD: ci-test-password
           WG_ENDPOINT: ci.example
           DATABASE_PATH: /tmp/ci-smoke.db
         run: |
