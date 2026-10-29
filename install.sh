@@ -54,9 +54,12 @@ if [[ -f "$PROJECT_DIR/.env" ]]; then
   :  # existing .env is kept as-is (step 4), sign-in settings included
 elif [[ -n $DOMAIN ]] && ! is_ip "$DOMAIN"; then
   TRAVERSE_PUBLIC_URL="${TRAVERSE_PUBLIC_URL:-https://${DOMAIN}}"
-  info "Google sign-in: create an OAuth client (Web application) at"
-  echo  "    https://console.cloud.google.com/apis/credentials"
-  echo  "    with Authorized redirect URI  ${TRAVERSE_PUBLIC_URL}/login/google/callback"
+  info "Google sign-in (step-by-step: README → \"Google sign-in\"):"
+  echo  "    1. https://console.cloud.google.com/auth/overview — set up the consent screen"
+  echo  "       (Audience: External; while it's in Testing, add your Google account as a test user)"
+  echo  "    2. https://console.cloud.google.com/apis/credentials → Create credentials →"
+  echo  "       OAuth client ID → Web application, Authorized redirect URI:"
+  echo  "         ${TRAVERSE_PUBLIC_URL}/login/google/callback"
   echo  "    (leave these blank to fill in .env later)"
   ask TRAVERSE_GOOGLE_CLIENT_ID "Google OAuth client ID" ""
   if [[ -z ${TRAVERSE_GOOGLE_CLIENT_SECRET:-} && -n $TRAVERSE_GOOGLE_CLIENT_ID && -t 0 ]]; then
@@ -152,7 +155,7 @@ WG_DNS=1.1.1.1
 # Pi-hole integration (optional). Install Pi-hole separately, then set these
 # and flip PIHOLE_ENABLED to true. PIHOLE_URL is the FTL API base (no /api).
 PIHOLE_ENABLED=false
-# PIHOLE_URL=http://${WG_SERVER_VPN_IP}:8080
+# PIHOLE_URL=http://127.0.0.1:8088
 # PIHOLE_PASSWORD=
 # PIHOLE_WEB_URL=/pihole
 EOF
@@ -218,13 +221,22 @@ if [[ -n $DOMAIN ]] && ! is_ip "$DOMAIN"; then
     [[ ${a,,} == n* ]] && do_cb=no || do_cb=yes
   fi
   if [[ $do_cb == yes ]]; then
+    # certbot's HTTP-01 check fails unless the domain already points here —
+    # say so up front instead of leaving the user with a cryptic failure.
+    RESOLVED="$(getent ahostsv4 "$DOMAIN" 2>/dev/null | awk 'NR==1{print $1}')"
+    if [[ -z $RESOLVED ]]; then
+      warn "$DOMAIN doesn't resolve yet — add a DNS A record pointing it at ${PUBLIC_IP}."
+    elif [[ -n $PUBLIC_IP && $RESOLVED != "$PUBLIC_IP" ]]; then
+      warn "$DOMAIN resolves to $RESOLVED, but this server is ${PUBLIC_IP} — fix the DNS A record."
+    fi
     info "Installing certbot + issuing certificate…"
     apt-get install -y -qq certbot python3-certbot-nginx >/dev/null
     if certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --redirect \
                --register-unsafely-without-email >/dev/null 2>&1; then
       ok "HTTPS enabled for $DOMAIN"
     else
-      warn "certbot failed (DNS not pointed at this box yet?) — site is still up on HTTP. Retry later: certbot --nginx -d $DOMAIN"
+      warn "certbot failed (DNS not pointed at this box yet? port 80 blocked?) — site is still up on HTTP,"
+      warn "and Google sign-in won't work until HTTPS does. Retry: certbot --nginx -d $DOMAIN"
     fi
   fi
 fi
@@ -243,6 +255,8 @@ else
   warn "Google sign-in isn't configured yet — set the TRAVERSE_* vars in $PROJECT_DIR/.env, then: systemctl restart traverse"
 fi
 echo
+warn "Cloud firewall: if your provider has one (Hetzner, AWS security groups, Oracle, GCP…),"
+warn "allow ${WG_PORT}/udp + 80,443/tcp there too, or devices will connect but never handshake."
 info "Next: open the dashboard and add your first peer. Handy commands:"
 echo "    systemctl status traverse wg-quick@${WG_INTERFACE} nginx"
 echo "    journalctl -u traverse -f"

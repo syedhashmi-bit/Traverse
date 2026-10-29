@@ -16,6 +16,7 @@ from database import get_all_peers, upsert_traffic_sample, get_peer_daily_traffi
 from wireguard import parse_wg_show, format_bytes, is_peer_active, format_handshake, get_interface_status, WG_INTERFACE
 from routes.auth import login_required
 from cache_ext import cache
+from envflags import pihole_enabled
 
 api_bp = Blueprint('api', __name__)
 
@@ -532,7 +533,7 @@ def _fetch_pihole_summary():
 def pihole_top_blocked():
     """Return top 10 blocked domains from Pi-hole v6 API."""
     import os
-    if not os.getenv('PIHOLE_ENABLED'):
+    if not pihole_enabled():
         return jsonify({'ok': False})
     sid = _pihole_auth()
     if not sid:
@@ -563,7 +564,7 @@ def pihole_top_blocked():
 def pihole_peer_queries(vpn_ip):
     """Return last 20 DNS queries for a specific VPN IP from Pi-hole v6 API."""
     import os
-    if not os.getenv('PIHOLE_ENABLED'):
+    if not pihole_enabled():
         return jsonify({'ok': False, 'reason': 'pihole disabled'})
     # Validate vpn_ip is a real IPv4 address before splicing into the URL,
     # otherwise a logged-in caller could inject extra Pi-hole API parameters.
@@ -599,7 +600,7 @@ def pihole_peer_queries(vpn_ip):
 @login_required
 def pihole_stats_api():
     import os
-    if not os.getenv('PIHOLE_ENABLED'):
+    if not pihole_enabled():
         return jsonify({'enabled': False})
     data = _fetch_pihole_summary()
     if data is None:
@@ -710,7 +711,7 @@ def _wg_uptime():
 def _pihole_status():
     """Return dict with pihole running state and blocked domain count."""
     import os
-    if not os.getenv('PIHOLE_ENABLED'):
+    if not pihole_enabled():
         return None
     try:
         r = subprocess.run(

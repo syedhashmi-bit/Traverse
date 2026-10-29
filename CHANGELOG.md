@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+## [1.15.1] — 2026-10-29 (Fresh-install fixes)
+
+### Fixed
+- **New peers on a fresh install had no working DNS.** The Add Peer form
+  defaulted to "Pi-hole (10.9.0.1)" — hardcoded to the original host — so on
+  any other subnet, or with no Pi-hole, devices connected but couldn't resolve
+  names. The Pi-hole option now uses the server's VPN IP and only appears when
+  Pi-hole is enabled; otherwise new peers default to `WG_DNS`. Same fix on the
+  peer edit form and the Settings Pi-hole note.
+- **`PIHOLE_ENABLED=false` turned Pi-hole on.** Most checks used
+  `bool(os.getenv(...))`, and install.sh writes `false`. One parser
+  (`envflags.py`) now accepts only `1/true/yes/on`.
+
+### Changed
+- `install.sh` explains the Google consent-screen step, warns when the domain
+  doesn't resolve to this server before certbot, says sign-in needs HTTPS when
+  certbot fails, and reminds you about cloud-provider firewalls.
+- README: a "Before you start" checklist, a step-by-step Google sign-in guide,
+  Pi-hole setup, Updating, Troubleshooting and Uninstalling sections; Python
+  requirement corrected to 3.10+.
+- CI runs on Python 3.10, 3.11, 3.12 and 3.14.
+
 ## [1.15.0] — 2026-10-29 (Google sign-in, first-run guided tour)
 
 ### Added — first-run guided tour

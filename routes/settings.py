@@ -13,6 +13,7 @@ from wireguard import (
 )
 import google_auth
 from routes.auth import login_required
+from envflags import pihole_enabled
 
 # Match the regex enforced by routes/peers.py — backup-import must apply the
 # same constraints as the create form, otherwise an attacker-supplied JSON
@@ -24,7 +25,7 @@ _WG_KEY_RE = re.compile(r'^[A-Za-z0-9+/]{43}=$')
 
 settings_bp = Blueprint('settings', __name__)
 
-PIHOLE_ENABLED = bool(os.getenv('PIHOLE_ENABLED'))
+PIHOLE_ENABLED = pihole_enabled()
 # Backend API base (FTL, talked to directly). User-facing link is PIHOLE_WEB_URL.
 PIHOLE_URL     = os.getenv('PIHOLE_URL', 'http://10.9.0.1:8088')
 # Clickable admin link shown in the UI — the reverse-proxied, auth-gated path.

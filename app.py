@@ -3,6 +3,7 @@ import secrets
 from datetime import timedelta
 from flask import Flask, g, render_template, request, session
 from dotenv import load_dotenv
+from envflags import pihole_enabled
 
 load_dotenv()
 
@@ -123,7 +124,7 @@ def create_app():
         # for an anonymous visitor (see _error_page below).
         if not session.get('logged_in'):
             return {}
-        from wireguard import get_interface_status
+        from wireguard import get_interface_status, WG_SERVER_IP, WG_DNS
         from database import count_unseen_alerts, count_peers
         try:
             unseen = count_unseen_alerts()
@@ -151,7 +152,11 @@ def create_app():
             'app_wg_subnet':           os.getenv('WG_SUBNET', '10.9.0.0/24'),
             'app_wg_endpoint':         os.getenv('WG_ENDPOINT', ''),
             'app_pihole_url':          os.getenv('PIHOLE_WEB_URL', '/pihole'),
-            'app_pihole_enabled':      bool(os.getenv('PIHOLE_ENABLED')),
+            'app_pihole_enabled':      pihole_enabled(),
+            # Pi-hole runs on the VPN server, so clients reach it at the
+            # server's VPN IP — never hardcode an address in templates.
+            'app_pihole_dns':          WG_SERVER_IP,
+            'app_wg_dns':              WG_DNS,
             'notifications_active':    notif_active,
             'show_tour':               show_tour,
         }
