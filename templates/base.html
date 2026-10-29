@@ -30,7 +30,7 @@
   <link rel="apple-touch-startup-image"
         href="{{ url_for('static', filename='icons/splash-1242x2688.png') }}">
 </head>
-<body class="{% block body_class %}{% endblock %}">
+<body class="{% block body_class %}{% endblock %}"{% if show_tour %} data-tour-autostart="1"{% endif %}>
 
 <!-- Chart-palette shim. app.js is loaded with `defer` further down so it
      won't have executed by the time the content block's inline <script nonce="{{ csp_nonce }}">
@@ -89,7 +89,7 @@
   <nav class="sidebar-nav">
 
     <a href="{{ url_for('dashboard.index') }}"
-       class="nav-link {% if request.endpoint == 'dashboard.index' %}active{% endif %}">
+       data-tour="dashboard" class="nav-link {% if request.endpoint == 'dashboard.index' %}active{% endif %}">
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <rect x="3" y="3" width="7" height="7" rx="1"/>
@@ -102,7 +102,7 @@
     </a>
 
     <a href="{{ url_for('peers.list_peers') }}"
-       class="nav-link {% if request.blueprint == 'peers' and request.endpoint not in ('peers.create', 'peers.wizard') %}active{% endif %}">
+       data-tour="peers" class="nav-link {% if request.blueprint == 'peers' and request.endpoint not in ('peers.create', 'peers.wizard') %}active{% endif %}">
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <circle cx="9" cy="7" r="3"/>
@@ -126,7 +126,7 @@
     </a>
 
     <a href="{{ url_for('map.map_view') }}"
-       class="nav-link {% if request.blueprint == 'map' and request.endpoint == 'map.map_view' %}active{% endif %}">
+       data-tour="map" class="nav-link {% if request.blueprint == 'map' and request.endpoint == 'map.map_view' %}active{% endif %}">
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <circle cx="12" cy="12" r="9"/>
@@ -161,7 +161,7 @@
     </a>
 
     <a href="{{ url_for('alerts.alerts_view') }}"
-       class="nav-link {% if request.blueprint == 'alerts' %}active{% endif %}">
+       data-tour="alerts" class="nav-link {% if request.blueprint == 'alerts' %}active{% endif %}">
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
@@ -210,7 +210,7 @@
     </a>
 
     <a href="{{ url_for('notifications.index') }}"
-       class="nav-link {% if request.blueprint == 'notifications' %}active{% endif %}">
+       data-tour="notifications" class="nav-link {% if request.blueprint == 'notifications' %}active{% endif %}">
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
@@ -227,7 +227,7 @@
     </a>
 
     <a href="{{ url_for('settings.index') }}"
-       class="nav-link {% if request.blueprint == 'settings' %}active{% endif %}">
+       data-tour="settings" class="nav-link {% if request.blueprint == 'settings' %}active{% endif %}">
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <circle cx="12" cy="12" r="3"/>
@@ -265,14 +265,14 @@
     <button id="hamburger" class="hamburger" aria-label="Open menu">&#9776;</button>
     <span class="page-title">{% block page_title %}Traverse{% endblock %}</span>
     <div class="topbar-right">
-      <span class="topbar-wg-pill {{ 'up' if wg_running else 'down' }}"
+      <span data-tour="wg-status" class="topbar-wg-pill {{ 'up' if wg_running else 'down' }}"
             title="WireGuard {{ 'running' if wg_running else 'stopped' }}">
         <span class="topbar-wg-dot"></span>
         <span class="topbar-wg-text">WG {{ 'UP' if wg_running else 'DOWN' }}</span>
       </span>
-      <a href="{{ url_for('peers.create') }}" class="btn btn-primary btn-sm topbar-add-peer">+<span class="topbar-add-peer-label"> Add Peer</span></a>
-      <button id="sound-toggle" class="btn btn-ghost btn-sm" title="Sound alerts">🔕</button>
-      <button id="help-toggle" class="btn btn-ghost btn-sm" title="Help">?</button>
+      <a href="{{ url_for('peers.create') }}" class="btn btn-primary btn-sm topbar-add-peer" data-tour="add-peer">+<span class="topbar-add-peer-label"> Add Peer</span></a>
+      <button id="sound-toggle" class="btn btn-ghost btn-sm" title="Sound alerts" data-tour="sound">🔕</button>
+      <button id="help-toggle" class="btn btn-ghost btn-sm" title="Help &amp; guided tour" data-tour="help">?</button>
       <button id="theme-toggle" class="btn btn-ghost btn-sm theme-toggle-btn" title="Toggle theme">☾</button>
       <form action="{{ url_for('auth.logout') }}" method="post" style="display:inline; margin:0;">
         <button type="submit" class="btn btn-ghost btn-sm" title="Signed in as {{ session.email }}">Sign Out</button>
@@ -301,7 +301,7 @@
 <!-- ── Bottom nav (mobile only) ──────────────────────────────────────── -->
 <nav class="bottom-nav">
   <a href="{{ url_for('dashboard.index') }}"
-     class="bottom-nav-item {% if request.endpoint == 'dashboard.index' %}active{% endif %}">
+     data-tour="dashboard" class="bottom-nav-item {% if request.endpoint == 'dashboard.index' %}active{% endif %}">
     <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
       <rect x="3" y="3" width="7" height="7" rx="1"/>
       <rect x="14" y="3" width="7" height="7" rx="1"/>
@@ -311,7 +311,7 @@
     <span>Home</span>
   </a>
   <a href="{{ url_for('peers.list_peers') }}"
-     class="bottom-nav-item {% if request.blueprint == 'peers' %}active{% endif %}">
+     data-tour="peers" class="bottom-nav-item {% if request.blueprint == 'peers' %}active{% endif %}">
     <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="9" cy="7" r="3"/>
       <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>
@@ -321,7 +321,7 @@
     <span>Peers</span>
   </a>
   <a href="{{ url_for('map.map_view') }}"
-     class="bottom-nav-item {% if request.blueprint == 'map' and request.endpoint == 'map.map_view' %}active{% endif %}">
+     data-tour="map" class="bottom-nav-item {% if request.blueprint == 'map' and request.endpoint == 'map.map_view' %}active{% endif %}">
     <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="12" cy="12" r="9"/>
       <path d="M3.6 9h16.8M3.6 15h16.8"/>
@@ -330,7 +330,7 @@
     <span>Map</span>
   </a>
   <a href="{{ url_for('alerts.alerts_view') }}"
-     class="bottom-nav-item {% if request.blueprint == 'alerts' %}active{% endif %}"
+     data-tour="alerts" class="bottom-nav-item {% if request.blueprint == 'alerts' %}active{% endif %}"
      style="position:relative;">
     <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
@@ -346,7 +346,7 @@
     <span>Alerts</span>
   </a>
   <a href="{{ url_for('settings.index') }}"
-     class="bottom-nav-item {% if request.blueprint == 'settings' %}active{% endif %}">
+     data-tour="settings" class="bottom-nav-item {% if request.blueprint == 'settings' %}active{% endif %}">
     <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="12" cy="12" r="3"/>
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -363,6 +363,11 @@
       <button type="button" class="help-close" id="help-close" aria-label="Close">×</button>
     </div>
     <div class="help-body">
+      <button type="button" class="help-tour-btn" id="help-tour-start">
+        <span class="help-tour-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
+        <span><strong>Take the guided tour</strong>
+          <span class="help-tour-sub">A 1-minute walk through the dashboard</span></span>
+      </button>
       <div class="help-section">
         <div class="help-section-title">Tips</div>
         <ul class="help-list">
@@ -440,6 +445,11 @@
   function show() { overlay.style.display = 'flex'; overlay.setAttribute('aria-hidden', 'false'); }
   function hide() { overlay.style.display = 'none'; overlay.setAttribute('aria-hidden', 'true'); }
   btn.addEventListener('click', show);
+  const tourB = document.getElementById('help-tour-start');
+  if (tourB) tourB.addEventListener('click', () => {
+    hide();
+    if (window.tvTour) window.tvTour.start();
+  });
   if (closeB) closeB.addEventListener('click', hide);
   overlay.addEventListener('click', e => { if (e.target === overlay) hide(); });
   document.addEventListener('keydown', e => {

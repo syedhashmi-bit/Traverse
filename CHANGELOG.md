@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [1.15.0] — 2026-10-29 (Google sign-in, first-run guided tour)
+
+### Added — first-run guided tour
+- **A spotlight tour of the dashboard starts the first time each Google
+  account signs in** — Add Peer, Peers, WireGuard status, Map, Alerts,
+  Notifications, sound alerts, Settings and Help, one step at a time
+  (Next / Back / arrow keys). **Skip tour** or Esc ends it.
+- Finishing or skipping records the account in a new `tour_seen` table
+  (`POST /api/tour/seen`), so it doesn't come back on other browsers.
+- **Replay any time** from the **?** help panel ("Take the guided tour").
+- Steps whose target isn't on screen (sidebar links on mobile) show centred
+  instead of pointing at nothing.
+
 ### Changed — sign-in is Google-only (breaking)
 - **Sign in with Google replaces the username/password login.** Standard
   OIDC authorization-code flow (new `google_auth.py`): `/login/google` sends

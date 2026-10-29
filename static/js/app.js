@@ -896,3 +896,184 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.stat-card, .card.tv-sheen, .noc-panel.tv-sheen').forEach(bind);
   });
 })();
+
+// ── Guided tour ────────────────────────────────────────────────────────
+// A spotlight walk-through of the app chrome. Auto-starts once per Google
+// account (base.html sets data-tour-autostart until /api/tour/seen is
+// posted); replayable any time from the ? help panel via tvTour.start().
+// Steps point at [data-tour] anchors in base.html; a step whose anchor
+// isn't on screen (e.g. sidebar links on mobile) is shown centred instead.
+(function () {
+  const STEPS = [
+    { title: 'Welcome to Traverse 👋',
+      body: 'Your self-hosted WireGuard VPN dashboard. This quick tour shows where everything lives — it takes about a minute.' },
+    { target: 'dashboard', title: 'Dashboard',
+      body: 'The live overview: who’s online right now, total throughput, and a 15-minute traffic chart.' },
+    { target: 'add-peer', title: 'Add your first device',
+      body: 'Every phone or laptop is a <b>peer</b>. Click <b>Add Peer</b>, give it a name, then scan the QR code with the WireGuard app — or download the .conf file.' },
+    { target: 'peers', title: 'Peers',
+      body: 'All your devices in one list: live status, search, per-peer traffic, expiry dates, schedules, and a kill switch to cut a device off instantly.' },
+    { target: 'wg-status', title: 'WireGuard status',
+      body: '<b>WG UP</b> means the tunnel interface is running. If it ever shows <b>DOWN</b>, no device can connect until it’s back.' },
+    { target: 'map', title: 'Connection map',
+      body: 'See roughly where each peer is connecting from, based on its public IP.' },
+    { target: 'alerts', title: 'Alerts',
+      body: 'Disconnects, bandwidth spikes, expiring peers and WireGuard outages are collected here.' },
+    { target: 'notifications', title: 'Notifications',
+      body: 'Get alerts pushed to Telegram, Discord or email, and choose exactly which events you hear about.' },
+    { target: 'sound', title: 'Sound alerts',
+      body: 'Toggle a chime and browser notification for when peers connect or disconnect while this tab is open.' },
+    { target: 'settings', title: 'Settings',
+      body: 'Who’s allowed to sign in, backups, and server details.' },
+    { target: 'help', title: 'Help is always here',
+      body: 'Click <b>?</b> (or press <kbd>?</kbd>) for tips, keyboard shortcuts — and to replay this tour any time. <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd> jumps anywhere.' },
+  ];
+  const PAD = 6;      // spotlight padding around the target
+  const GAP = 12;     // space between target and popover
+  const EDGE = 12;    // min distance from viewport edges
+
+  let idx = 0, root = null, spot = null, pop = null, prevFocus = null;
+
+  function visibleTarget(key) {
+    if (!key) return null;
+    for (const el of document.querySelectorAll(`[data-tour="${key}"]`)) {
+      const r = el.getBoundingClientRect();
+      if (r.width && r.height && r.right > 0 && r.bottom > 0 &&
+          r.left < window.innerWidth && r.top < window.innerHeight &&
+          getComputedStyle(el).visibility !== 'hidden') return el;
+    }
+    return null;
+  }
+
+  function markSeen() {
+    try { sessionStorage.setItem('tv-tour-seen', '1'); } catch (_) {}
+    fetch('/api/tour/seen', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+  }
+
+  function build() {
+    root = document.createElement('div');
+    root.className = 'tour-root';
+    root.innerHTML =
+      '<div class="tour-blocker"></div>' +
+      '<div class="tour-spot"></div>' +
+      '<div class="tour-pop" role="dialog" aria-modal="true" aria-labelledby="tour-title">' +
+        '<div class="tour-step"></div>' +
+        '<div class="tour-title" id="tour-title"></div>' +
+        '<div class="tour-body" aria-live="polite"></div>' +
+        '<div class="tour-foot">' +
+          '<button type="button" class="tour-skip">Skip tour</button>' +
+          '<div class="tour-nav">' +
+            '<button type="button" class="btn btn-ghost btn-sm tour-back">Back</button>' +
+            '<button type="button" class="btn btn-primary btn-sm tour-next">Next</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(root);
+    spot = root.querySelector('.tour-spot');
+    pop  = root.querySelector('.tour-pop');
+    root.querySelector('.tour-skip').addEventListener('click', () => end());
+    root.querySelector('.tour-back').addEventListener('click', () => go(idx - 1));
+    root.querySelector('.tour-next').addEventListener('click', () =>
+      idx === STEPS.length - 1 ? end() : go(idx + 1));
+  }
+
+  function place() {
+    if (!root) return;
+    const el = visibleTarget(STEPS[idx].target);
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    if (!el) {
+      root.classList.add('tour-centered');
+      pop.style.left = Math.max(EDGE, (vw - pw) / 2) + 'px';
+      pop.style.top  = Math.max(EDGE, (vh - ph) / 2) + 'px';
+      return;
+    }
+    root.classList.remove('tour-centered');
+    const r = el.getBoundingClientRect();
+    const s = { left: r.left - PAD, top: r.top - PAD,
+                width: r.width + PAD * 2, height: r.height + PAD * 2 };
+    Object.assign(spot.style, { left: s.left + 'px', top: s.top + 'px',
+                                width: s.width + 'px', height: s.height + 'px' });
+    // First side with room wins: below, right, above, left.
+    const fits = {
+      bottom: s.top + s.height + GAP + ph <= vh - EDGE,
+      right:  s.left + s.width + GAP + pw <= vw - EDGE,
+      top:    s.top - GAP - ph >= EDGE,
+      left:   s.left - GAP - pw >= EDGE,
+    };
+    const side = ['bottom', 'right', 'top', 'left'].find(k => fits[k]) || 'bottom';
+    let x, y;
+    if (side === 'bottom' || side === 'top') {
+      x = s.left + s.width / 2 - pw / 2;
+      y = side === 'bottom' ? s.top + s.height + GAP : s.top - GAP - ph;
+    } else {
+      x = side === 'right' ? s.left + s.width + GAP : s.left - GAP - pw;
+      y = s.top + s.height / 2 - ph / 2;
+    }
+    pop.style.left = Math.min(Math.max(EDGE, x), vw - pw - EDGE) + 'px';
+    pop.style.top  = Math.min(Math.max(EDGE, y), vh - ph - EDGE) + 'px';
+  }
+
+  function go(i) {
+    if (i < 0 || i >= STEPS.length) return;
+    idx = i;
+    const step = STEPS[i], last = i === STEPS.length - 1;
+    pop.querySelector('.tour-step').textContent = `${i + 1} of ${STEPS.length}`;
+    pop.querySelector('.tour-title').textContent = step.title;
+    pop.querySelector('.tour-body').innerHTML = step.body;   // static strings above
+    pop.querySelector('.tour-back').hidden = i === 0;
+    pop.querySelector('.tour-skip').hidden = last;
+    const next = pop.querySelector('.tour-next');
+    next.textContent = i === 0 ? 'Show me around' : last ? 'Finish' : 'Next';
+    place();
+    next.focus({ preventScroll: true });
+  }
+
+  function onKey(e) {
+    if (!root) return;
+    // Swallow everything while the tour is up so page shortcuts (g p, ?,
+    // n…) don't fire underneath it. Tab stays inside the popover.
+    if (e.key === 'Escape') { e.preventDefault(); end(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); idx === STEPS.length - 1 ? end() : go(idx + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(idx - 1); }
+    else if (e.key === 'Tab') {
+      const f = [...pop.querySelectorAll('button')].filter(b => !b.hidden);
+      const at = f.indexOf(document.activeElement);
+      e.preventDefault();
+      f[(at + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();
+    }
+    else if (e.key === 'Enter' || e.key === ' ') return;   // let buttons activate
+    e.stopImmediatePropagation();
+  }
+
+  function start() {
+    if (root) return;
+    prevFocus = document.activeElement;
+    build();
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    go(0);
+    requestAnimationFrame(() => root && root.classList.add('tour-in'));
+  }
+
+  // Finishing, skipping and Esc all count as "seen" — the ? panel replays it.
+  function end() {
+    if (!root) return;
+    window.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('resize', place);
+    window.removeEventListener('scroll', place, true);
+    root.remove();
+    root = spot = pop = null;
+    markSeen();
+    if (prevFocus && prevFocus.focus) prevFocus.focus({ preventScroll: true });
+  }
+
+  window.tvTour = { start, end };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if (document.body.dataset.tourAutostart !== '1') return;
+    try { if (sessionStorage.getItem('tv-tour-seen')) return; } catch (_) {}
+    setTimeout(start, 600);   // let the page settle so anchors have their final positions
+  });
+})();

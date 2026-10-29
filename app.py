@@ -134,6 +134,11 @@ def create_app():
         except Exception:
             peer_total = 0
         try:
+            from database import has_seen_tour
+            show_tour = not has_seen_tour(session.get('email'))
+        except Exception:
+            show_tour = False
+        try:
             from notifications import is_any_channel_active
             notif_active = is_any_channel_active()
         except Exception:
@@ -148,6 +153,7 @@ def create_app():
             'app_pihole_url':          os.getenv('PIHOLE_WEB_URL', '/pihole'),
             'app_pihole_enabled':      bool(os.getenv('PIHOLE_ENABLED')),
             'notifications_active':    notif_active,
+            'show_tour':               show_tour,
         }
 
     @app.before_request

@@ -348,6 +348,18 @@ def peer_kill(peer_id):
     return jsonify({'ok': True, 'peer_name': peer['name'], 'peer_id': peer_id})
 
 
+@api_bp.route('/api/tour/seen', methods=['POST'])
+@login_required
+def tour_seen():
+    """The first-run tour was finished or skipped — don't auto-start it again
+    for this account. Replaying it from the ? panel calls this too (no-op)."""
+    from flask import session
+    from database import mark_tour_seen
+    if session.get('email'):
+        mark_tour_seen(session['email'])
+    return jsonify({'ok': True})
+
+
 @api_bp.route('/api/events/latest')
 @login_required
 def events_latest():

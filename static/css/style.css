@@ -747,6 +747,37 @@ tbody td {
 
 .help-body { padding: 16px 18px 20px; }
 
+.help-tour-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.help-tour-btn:hover, .help-tour-btn:focus-visible { border-color: var(--accent); background: var(--surface-3); }
+.help-tour-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+}
+.help-tour-sub { display: block; color: var(--text-muted); font-size: 0.78rem; margin-top: 2px; }
+
 .help-section { margin-bottom: 18px; }
 .help-section:last-child { margin-bottom: 0; }
 .help-section-title {
@@ -3984,3 +4015,60 @@ body.theme-light .badge-amber { color: #b45309; background: rgba(251,191,36,.20)
 }
 
 
+
+/* ── Guided tour ──────────────────────────────────────────────────────── */
+
+.tour-root { position: fixed; inset: 0; z-index: 9990; opacity: 0; transition: opacity 0.2s ease-out; }
+.tour-root.tour-in { opacity: 1; }
+/* Eats clicks so the page can't be used mid-tour; the spotlight's huge
+   box-shadow does the dimming. */
+.tour-blocker { position: absolute; inset: 0; }
+.tour-centered .tour-blocker { background: rgba(0, 0, 0, 0.6); }
+.tour-spot {
+  position: fixed;
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6), 0 0 0 2px var(--accent);
+  pointer-events: none;
+  transition: left 0.25s var(--ease-out, ease-out), top 0.25s var(--ease-out, ease-out),
+              width 0.25s var(--ease-out, ease-out), height 0.25s var(--ease-out, ease-out);
+}
+.tour-centered .tour-spot { display: none; }
+.tour-pop {
+  position: fixed;
+  width: min(340px, calc(100vw - 24px));
+  padding: 16px 18px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  color: var(--text);
+  transition: left 0.25s var(--ease-out, ease-out), top 0.25s var(--ease-out, ease-out);
+}
+.tour-step {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.tour-title { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+.tour-body { font-size: 0.86rem; line-height: 1.5; color: var(--text-muted); }
+.tour-body b { color: var(--text); font-weight: 600; }
+.tour-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; }
+.tour-nav { display: flex; gap: 6px; margin-left: auto; }
+.tour-skip {
+  background: none;
+  border: none;
+  padding: 4px 0;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.tour-skip:hover, .tour-skip:focus-visible { color: var(--text); text-decoration: underline; }
+body.theme-light .tour-spot { box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45), 0 0 0 2px var(--accent); }
+body.theme-light .tour-centered .tour-blocker { background: rgba(15, 23, 42, 0.45); }
+@media (prefers-reduced-motion: reduce) {
+  .tour-root, .tour-spot, .tour-pop { transition: none; }
+}
