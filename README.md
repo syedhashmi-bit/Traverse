@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white&labelColor=23272e" alt="Python 3.12+">
+  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white&labelColor=23272e" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/Flask-3.1-000000?logo=flask&logoColor=white&labelColor=23272e" alt="Flask 3.1">
   <img src="https://img.shields.io/badge/WireGuard-VPN-2ea44f?logo=wireguard&logoColor=white&labelColor=23272e" alt="WireGuard VPN">
   <img src="https://img.shields.io/badge/Pi--hole-v6-96060C?logo=pihole&logoColor=white&labelColor=23272e" alt="Pi-hole v6">
@@ -129,17 +129,25 @@
 
 ## Requirements
 
-- **OS**: Linux VPS — tested on Ubuntu 22.04 / Debian 12
-- **Python**: 3.12+
+- **OS**: Linux VPS — Ubuntu 22.04 / 24.04, Debian 12
+- **Python**: 3.10+ (the distro's `python3` is fine; CI tests 3.10 → 3.14)
 - **WireGuard**: `apt install wireguard`
 - **Privileges**: must run as `root` (needs access to `wg`, `wg-quick`, and `systemctl`)
 - **A domain with HTTPS** for the dashboard — Google sign-in won't redirect to a bare IP or plain `http://` (certbot via the installer is fine)
 - **A Google account** to create a free OAuth client in Google Cloud Console — see [Google sign-in](#google-sign-in)
-- **Ports**: UDP `51821` open for WireGuard; TCP `443`/`80` open for the web UI
+- **Ports**: the WireGuard UDP port (installer default `51820`) and TCP `80`/`443` — open them in your **cloud provider's firewall** too (Hetzner, AWS security groups, Oracle, GCP…), not just on the server
 
 ---
 
 ## Installation
+
+### Before you start
+
+Three things the installer can't do for you — do them first and the rest is one command:
+
+1. **Point a domain at the server.** Add a DNS **A record** (e.g. `vpn.example.com`) with your VPS's public IP and wait until `ping vpn.example.com` shows that IP. Google sign-in needs HTTPS, and HTTPS needs a domain.
+2. **Open the ports in your cloud provider's firewall** — the WireGuard UDP port (default `51820`) plus TCP `80` and `443`. Missing UDP here is the #1 cause of "the VPN app says connected but nothing loads".
+3. **Create a Google OAuth client** — about 5 minutes, see [Google sign-in](#google-sign-in). You can also skip it during install and add it to `.env` afterwards.
 
 ### Quick install (recommended)
 
@@ -162,18 +170,18 @@ sudo DOMAIN=vpn.example.com RUN_CERTBOT=yes \
      TRAVERSE_ADMIN_EMAILS='you@example.com' ./install.sh
 ```
 
-Then open the printed URL, sign in with Google, and add your first peer. To enable Pi-hole ad-blocking, install Pi-hole separately and set the `PIHOLE_*` vars in `.env`.
+Then open the printed URL, sign in with Google — a short guided tour shows you around — and add your first peer: scan its QR code with the WireGuard app ([iOS](https://apps.apple.com/app/wireguard/id1441195209), [Android](https://play.google.com/store/apps/details?id=com.wireguard.android), [desktop](https://www.wireguard.com/install/)). For ad-blocking, see [Pi-hole](#pi-hole-optional).
 
 ---
 
 ### Manual installation
 
-<sub>Use this on other distros, or to understand each step. The quick installer above does all of this for you.</sub>
+<sub>Use this on other distros, or to understand each step. The quick installer above does all of this for you. These steps use the app's built-in defaults (`wg1`, port `51821`, `10.9.0.0/24`); the installer instead writes `wg0`, `51820` and `10.8.0.0/24` into `.env` — either works as long as `.env` and the WireGuard config agree.</sub>
 
 ### 1. Install system dependencies
 
 ```bash
-apt update && apt install -y wireguard python3.12 python3.12-venv python3-pip nginx
+apt update && apt install -y wireguard python3 python3-venv python3-pip nginx
 ```
 
 ### 2. Clone the repository
@@ -252,21 +260,34 @@ Fill in every required variable — see the [Environment Variables](#environment
 ## Google sign-in
 
 Sign-in is Google-only, and it needs a domain served over HTTPS (Google
-won't redirect to a bare IP or plain `http://`).
+won't redirect to a bare IP or plain `http://`). It's free and takes about
+five minutes:
 
-1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-   → **APIs & Services → Credentials → Create credentials → OAuth client ID**,
-   pick **Web application** and add one **Authorized redirect URI**:
+1. **Create a project.** Open [Google Cloud Console](https://console.cloud.google.com/),
+   pick the project dropdown at the top → **New project** → any name (e.g.
+   `traverse`) → **Create**, and make sure it's selected.
+2. **Set up the consent screen.** Go to
+   [Google Auth Platform](https://console.cloud.google.com/auth/overview) →
+   **Get started**. App name `Traverse`, your email as support/contact
+   email, **Audience: External** → **Create**.
+   Then **Audience → Test users → Add users** and add every Google account
+   that will sign in. (Leaving the app in *Testing* is fine for personal use —
+   only listed test users can get past Google's screen anyway.)
+3. **Create the client.** Go to
+   [Credentials](https://console.cloud.google.com/apis/credentials) →
+   **Create credentials → OAuth client ID** → Application type
+   **Web application**. Under **Authorized redirect URIs** add exactly:
 
    ```
    https://<your-traverse-host>/login/google/callback
    ```
 
-   (Already have a Google Cloud project for another app? Add a new client
-   there — the consent screen is shared, the client and its secret aren't.
-   If the consent screen is in *Testing*, add yourself as a test user.)
+   **Create**, then copy the **Client ID** and **Client secret**.
 
-2. Set in `.env` and restart Traverse:
+   (Already have a Google Cloud project for another app? Add a new client
+   there — the consent screen is shared, the client and its secret aren't.)
+
+4. Give them to `install.sh` when it asks, or set them in `.env` and restart Traverse:
 
    ```bash
    TRAVERSE_PUBLIC_URL=https://<your-traverse-host>
@@ -287,7 +308,9 @@ are set, the login button is disabled and the startup log says what's missing.
 
 ## Environment Variables
 
-All configuration lives in `.env`. Never commit this file.
+All configuration lives in `.env`. Never commit this file. The **Default**
+column is what the app falls back to when a variable is missing;
+`install.sh` writes its own values (`wg0`, `51820`, `10.8.0.0/24`) into `.env`.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -306,7 +329,7 @@ All configuration lives in `.env`. Never commit this file.
 | `TELEGRAM_BOT_TOKEN` | no | — | Legacy Telegram bot token (used by the early-boot WG-down alerter); both must be set to enable |
 | `TELEGRAM_CHAT_ID` | no | — | Legacy Telegram chat ID |
 | `ALERT_INACTIVE_HOURS` | no | `0` (disabled) | Hours of inactivity before a peer triggers an alert |
-| `PIHOLE_ENABLED` | no | — | Set to `true` / `1` / `yes` to enable the Pi-hole integration |
+| `PIHOLE_ENABLED` | no | — | `true` / `1` / `yes` / `on` enables the Pi-hole integration; anything else (including `false`) leaves it off |
 | `PIHOLE_PASSWORD` | no | — | Pi-hole admin password (used for the v6 API auth dance) |
 | `PIHOLE_URL` | no | `http://10.9.0.1:8088` | Pi-hole/FTL **API** base, talked to directly by the backend (no `/api` suffix — it's appended) |
 | `MAX_PEERS` | no | `20` | Peer cap, clamped to 1–50 |
@@ -437,6 +460,32 @@ Certbot will automatically configure HTTPS and set up auto-renewal.
 
 ## Optional Features
 
+### Pi-hole (optional)
+
+Traverse can show Pi-hole stats and hand VPN devices Pi-hole as their DNS
+for network-wide ad-blocking. Pi-hole v6 is installed separately, on the
+same server:
+
+```bash
+curl -sSL https://install.pi-hole.net | bash        # pick your WireGuard interface (e.g. wg0) when asked
+pihole-FTL --config webserver.port 8088             # nginx already owns port 80
+pihole setpassword 'choose-a-password'
+ufw allow in on wg0 to any port 53                  # only if ufw is active; use your interface name
+```
+
+Then add to `.env` and `systemctl restart traverse`:
+
+```bash
+PIHOLE_ENABLED=true
+PIHOLE_URL=http://127.0.0.1:8088                    # FTL API base, no /api
+PIHOLE_PASSWORD=choose-a-password
+PIHOLE_WEB_URL=http://<WG_SERVER_VPN_IP>:8088/admin/ # admin UI, reachable over the VPN
+```
+
+New peers then default to the server's VPN IP (where Pi-hole answers) as
+DNS. Existing peers keep their DNS until you change it on the peer's page
+and re-download / re-scan the config.
+
 ### Telegram Alerts
 
 1. Create a bot via [@BotFather](https://t.me/BotFather) and copy the token
@@ -456,9 +505,52 @@ You'll receive Telegram messages when:
 
 ---
 
+## Updating
+
+```bash
+cd /var/www/traverse
+git pull
+venv/bin/pip install -r requirements.txt
+systemctl restart traverse
+```
+
+Database changes migrate themselves on start. Check `CHANGELOG.md` for
+anything marked **breaking** first, then `journalctl -u traverse -n 30` after
+the restart. Re-running `sudo ./install.sh` is also safe — it keeps your keys,
+`.env` and WireGuard config.
+
+## Troubleshooting
+
+| Symptom | Likely cause |
+|---|---|
+| Sign-in button greyed out | One of the four `TRAVERSE_*` sign-in vars is empty — `journalctl -u traverse -n 30` names it; **Settings → Sign-in (Google)** shows what the server expects |
+| Google says `redirect_uri_mismatch` | The redirect URI on the Google client doesn't exactly match `TRAVERSE_PUBLIC_URL` + `/login/google/callback` (scheme, host, no trailing slash) |
+| Google says "access blocked" / app not verified | Your account isn't a **test user** on the consent screen |
+| "That Google account isn't allowed" | The email isn't in `TRAVERSE_ADMIN_EMAILS` (restart after editing `.env`) |
+| Device says connected, but no handshake / nothing loads | WireGuard UDP port closed in the **cloud provider's firewall**, or `WG_ENDPOINT` isn't the server's public IP/domain |
+| Handshake OK, but websites don't load | DNS: the peer's DNS server isn't reachable — use a public resolver (1.1.1.1) or check Pi-hole; also confirm `sysctl net.ipv4.ip_forward` is `1` |
+| `certbot` failed | The domain's A record doesn't point at this server yet, or TCP 80 is closed — fix, then `certbot --nginx -d <domain>` |
+
+## Uninstalling
+
+```bash
+systemctl disable --now traverse "wg-quick@wg0"      # your WG_INTERFACE
+rm -f /etc/systemd/system/traverse.service /etc/nginx/sites-enabled/traverse /etc/nginx/sites-available/traverse
+systemctl daemon-reload && systemctl reload nginx
+rm -f /etc/wireguard/wg0.conf /etc/sysctl.d/99-traverse.conf   # removes the VPN server config + forwarding
+rm -rf /var/www/traverse /var/log/traverse                     # app, database and logs
+```
+
+`server_private.key` / `server_public.key` in `/etc/wireguard/` are left
+alone — delete them too if you won't reinstall (existing device configs stop
+working either way).
+
+---
+
 ## Managing the Service
 
 ```bash
+# (examples use wg1 — substitute your WG_INTERFACE; the installer default is wg0)
 # Status of all three services
 systemctl status traverse nginx wg-quick@wg1
 

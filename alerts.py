@@ -8,6 +8,7 @@ import threading
 import urllib.request
 import urllib.parse
 from contextlib import contextmanager
+from envflags import pihole_enabled
 
 
 _INTERVAL         = 60    # poll every 60 s
@@ -530,7 +531,7 @@ def _check():
                 )
 
     # ── Pi-hole up/down ────────────────────────────────────────────────────
-    if os.getenv('PIHOLE_ENABLED', '').strip().lower() in ('1', 'true', 'yes', 'on'):
+    if pihole_enabled():
         global _pihole_was_down
         try:
             ph_running = _pihole_alive()

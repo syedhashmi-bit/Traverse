@@ -49,7 +49,10 @@
         <div class="form-group">
           <label class="form-label">DNS Server</label>
           <select class="form-select" id="dns_preset">
-            <option value="pihole" selected>Pi-hole (10.9.0.1) — ad blocking</option>
+            {% if app_pihole_enabled %}
+            <option value="pihole" selected>Pi-hole ({{ app_pihole_dns }}) — ad blocking</option>
+            {% endif %}
+            <option value="default" {% if not app_pihole_enabled %}selected{% endif %}>Server default ({{ app_wg_dns }})</option>
             <option value="cloudflare">Cloudflare (1.1.1.1, 1.0.0.1)</option>
             <option value="google">Google (8.8.8.8, 8.8.4.4)</option>
             <option value="quad9">Quad9 (9.9.9.9)</option>
@@ -147,7 +150,7 @@
   const customInp  = document.getElementById('custom_dns_input');
 
   const DNS_MAP = {
-    pihole:     '10.9.0.1',
+    pihole:     {{ app_pihole_dns|tojson }},
     cloudflare: '1.1.1.1, 1.0.0.1',
     google:     '8.8.8.8, 8.8.4.4',
     quad9:      '9.9.9.9',
@@ -160,8 +163,9 @@
       dnsHidden.value  = customInp.value.trim();
       dnsFallback.value = customInp.value.trim() || '1.1.1.1';
     } else {
+      // "default" → no override, so the peer gets WG_DNS.
       dnsHidden.value  = DNS_MAP[v] || '';
-      dnsFallback.value = DNS_MAP[v] || '1.1.1.1';
+      dnsFallback.value = DNS_MAP[v] || {{ app_wg_dns|tojson }};
     }
   }
 

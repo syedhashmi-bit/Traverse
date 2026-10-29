@@ -11,6 +11,7 @@ from wireguard import (
     MAX_PEERS,
 )
 from routes.auth import login_required
+from envflags import pihole_enabled
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
@@ -64,7 +65,7 @@ def index():
         wg_port        = WG_PORT,
         format_bytes   = format_bytes,
         expired_peers  = count_expired_peers(),
-        pihole_enabled = bool(os.getenv('PIHOLE_ENABLED')),
+        pihole_enabled = pihole_enabled(),
         pihole_url     = os.getenv('PIHOLE_WEB_URL', '/pihole'),
         recent_alerts  = [a for a in get_all_alerts(limit=10) if not a['seen']][:3],
     )

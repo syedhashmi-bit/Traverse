@@ -29,8 +29,9 @@ from wireguard import (
     WG_ENDPOINT, WG_DNS, WG_PORT, MAX_PEERS,
 )
 from routes.auth import login_required
+from envflags import pihole_enabled
 
-PIHOLE_ENABLED = bool(os.getenv('PIHOLE_ENABLED'))
+PIHOLE_ENABLED = pihole_enabled()
 # Pi-hole runs on the VPN server, so its DNS address is the server's VPN IP.
 # Env-driven so it tracks WG_SERVER_VPN_IP after a host/subnet migration
 # (was hardcoded '10.8.0.1', which broke DNS once Pi-hole moved to 10.9.0.1).
