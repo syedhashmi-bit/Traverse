@@ -272,6 +272,16 @@ def migrate_db():
             )
         """)
 
+        # Which Google accounts have finished (or skipped) the first-run
+        # guided tour. Keyed by email so it follows the person across
+        # browsers; the tour can still be replayed from the ? help panel.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tour_seen (
+                email   TEXT PRIMARY KEY,
+                seen_at TEXT NOT NULL
+            )
+        """)
+
         # ── Indexes (idempotent) ──────────────────────────────────────────
         for _idx_sql in (
             "CREATE INDEX IF NOT EXISTS idx_peers_enabled ON peers(enabled)",
@@ -1069,6 +1079,26 @@ def is_notification_event_enabled(event_type):
     if not row:
         return True  # default-on for unknown events
     return bool(row['enabled'])
+
+
+# ── First-run tour ───────────────────────────────────────────────────────────
+
+def has_seen_tour(email):
+    if not email:
+        return True   # no identity to remember it against — never nag
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT 1 FROM tour_seen WHERE email = ?", (email.lower(),)
+        ).fetchone() is not None
+
+
+def mark_tour_seen(email):
+    from datetime import datetime
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO tour_seen (email, seen_at) VALUES (?, ?)",
+            (email.lower(), datetime.utcnow().isoformat()),
+        )
 
 
 # ── Audit log ────────────────────────────────────────────────────────────────
