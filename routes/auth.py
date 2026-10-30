@@ -40,11 +40,24 @@ def _safe_next(target):
     return url_for('dashboard.index')
 
 
-def _client_ip():
-    xff = request.headers.get('X-Forwarded-For', '')
-    if xff:
-        return xff.split(',')[0].strip()
-    return request.remote_addr or 'unknown'
+# gunicorn listens on 127.0.0.1, so nginx on this box is the only hop whose
+# X-Forwarded-For we believe.
+_TRUSTED_PROXIES = ('127.0.0.1', '::1')
+
+
+def client_ip():
+    """The visitor's address, for audit rows, logs and alerts.
+
+    nginx's $proxy_add_x_forwarded_for *appends* the address it saw, so only
+    the LAST entry is real — anything before it is whatever the browser sent
+    (taking the first entry let anyone write a fake IP into the audit log).
+    The header is only read when the request came from nginx itself."""
+    peer = request.remote_addr or ''
+    if peer in _TRUSTED_PROXIES:
+        hops = [h.strip() for h in request.headers.get('X-Forwarded-For', '').split(',')]
+        if hops[-1]:
+            return hops[-1]
+    return peer or 'unknown'
 
 
 def _flow_serializer():
@@ -56,7 +69,7 @@ def _notify_login_success(email):
         from notifications import send_notification
         send_notification(
             'login_success',
-            f'🔐 {email} signed into traverse dashboard (IP `{_client_ip()}`)',
+            f'🔐 {email} signed into traverse dashboard (IP `{client_ip()}`)',
             severity='info',
         )
     except Exception:
@@ -69,7 +82,7 @@ def _notify_login_failed(email):
         send_notification(
             'login_failed',
             f'🚫 Google account {email} was refused sign-in to traverse '
-            f'(IP `{_client_ip()}`)',
+            f'(IP `{client_ip()}`)',
             severity='warning',
         )
     except Exception:
@@ -144,7 +157,7 @@ def google_start():
 def google_callback():
     """Google sends the browser back here with ?code&state (or ?error).
     Success → session + a hop to the dashboard; anything else → /login?error=."""
-    ip = _client_ip()
+    ip = client_ip()
     try:
         flow = _flow_serializer().loads(
             request.cookies.get(_FLOW_COOKIE, ''), max_age=google_auth.FLOW_TTL)
@@ -230,7 +243,7 @@ def auth_check():
 def logout():
     try:
         from database import audit
-        audit('auth.logout', actor_ip=_client_ip(),
+        audit('auth.logout', actor_ip=client_ip(),
               details=f"google:{session['email']}" if session.get('email') else None)
     except Exception:
         pass

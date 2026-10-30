@@ -28,7 +28,7 @@ from wireguard import (
     is_peer_active, _effective_allowed_ips,
     WG_ENDPOINT, WG_DNS, WG_PORT, MAX_PEERS,
 )
-from routes.auth import login_required
+from routes.auth import client_ip, login_required
 from envflags import pihole_enabled
 
 PIHOLE_ENABLED = pihole_enabled()
@@ -46,13 +46,6 @@ _DEVICES = {'phone', 'laptop', 'desktop', 'tablet', 'router', 'other'}
 
 def _safe_name(name):
     return bool(_NAME_RE.match(name))
-
-
-def _actor_ip():
-    xff = request.headers.get('X-Forwarded-For', '')
-    if xff:
-        return xff.split(',')[0].strip()
-    return request.remote_addr or 'unknown'
 
 
 # ── List ─────────────────────────────────────────────────────────────────────
@@ -186,7 +179,7 @@ def create():
         pass
 
     audit('peer.create', target_type='peer', target_id=peer_id,
-          target_name=name, actor_ip=_actor_ip(),
+          target_name=name, actor_ip=client_ip(),
           details=f'tunnel={tunnel_mode} ip={vpn_ip}')
 
     flash(f'Peer "{name}" created at {vpn_ip}.', 'success')
@@ -327,7 +320,7 @@ def api_create():
         pass
 
     audit('peer.create', target_type='peer', target_id=peer_id,
-          target_name=name, actor_ip=_actor_ip(),
+          target_name=name, actor_ip=client_ip(),
           details=f'tunnel={tunnel_mode} ip={vpn_ip} via=wizard')
 
     return jsonify({'ok': True, 'peer_id': peer_id, 'redirect': url_for('peers.detail', peer_id=peer_id)})
@@ -519,7 +512,7 @@ def regenerate(peer_id):
     except Exception:
         pass
     audit('peer.regenerate', target_type='peer', target_id=peer_id,
-          target_name=peer['name'], actor_ip=_actor_ip())
+          target_name=peer['name'], actor_ip=client_ip())
 
     flash('Config regenerated. The old config will no longer work — download or scan the new one below.', 'success')
     return redirect(url_for('peers.detail', peer_id=peer_id))
@@ -571,7 +564,7 @@ def rotate_psk(peer_id):
         pass
 
     audit('peer.psk_rotate', target_type='peer', target_id=peer_id,
-          target_name=peer['name'], actor_ip=_actor_ip())
+          target_name=peer['name'], actor_ip=client_ip())
 
     flash(
         'Preshared key rotated. The old config will no longer connect — '
@@ -635,7 +628,7 @@ def schedule_save(peer_id):
     set_peer_schedule(peer_id, days, enabled_from, enabled_to,
                       timezone=tz, enabled=is_enabled)
     audit('peer.schedule_saved', target_type='peer', target_id=peer_id,
-          target_name=peer['name'], actor_ip=_actor_ip(),
+          target_name=peer['name'], actor_ip=client_ip(),
           details=f'{enabled_from}-{enabled_to} {tz} '
                   f'days={",".join(str(d) for d in sorted(days))} '
                   f'enabled={is_enabled}')
@@ -651,7 +644,7 @@ def schedule_delete(peer_id):
         abort(404)
     delete_peer_schedule(peer_id)
     audit('peer.schedule_deleted', target_type='peer', target_id=peer_id,
-          target_name=peer['name'], actor_ip=_actor_ip())
+          target_name=peer['name'], actor_ip=client_ip())
     flash('Schedule removed — peer state is back under manual control.', 'success')
     return redirect(url_for('peers.detail', peer_id=peer_id) + '#schedule')
 
@@ -684,7 +677,7 @@ def toggle(peer_id):
 
     audit('peer.enable' if new_state else 'peer.disable',
           target_type='peer', target_id=peer_id,
-          target_name=peer['name'], actor_ip=_actor_ip())
+          target_name=peer['name'], actor_ip=client_ip())
 
     return redirect(url_for('peers.detail', peer_id=peer_id))
 
@@ -711,7 +704,7 @@ def delete(peer_id):
     except Exception:
         pass
     audit('peer.delete', target_type='peer', target_id=peer_id,
-          target_name=peer_name, actor_ip=_actor_ip())
+          target_name=peer_name, actor_ip=client_ip())
     flash(f'Peer "{peer_name}" deleted.', 'success')
     return redirect(url_for('peers.list_peers'))
 
@@ -742,7 +735,7 @@ def bulk_disable():
     if not ids:
         return jsonify({'ok': False, 'error': 'No peer ids provided.'}), 400
     n = 0
-    actor = _actor_ip()
+    actor = client_ip()
     for pid in ids:
         peer = get_peer_by_id(pid)
         if not peer or not peer.get('enabled'):
@@ -765,7 +758,7 @@ def bulk_enable():
     if not ids:
         return jsonify({'ok': False, 'error': 'No peer ids provided.'}), 400
     n = 0
-    actor = _actor_ip()
+    actor = client_ip()
     for pid in ids:
         peer = get_peer_by_id(pid)
         if not peer or peer.get('enabled'):
@@ -792,7 +785,7 @@ def bulk_delete():
     if not ids:
         return jsonify({'ok': False, 'error': 'No peer ids provided.'}), 400
     n = 0
-    actor = _actor_ip()
+    actor = client_ip()
     for pid in ids:
         peer = get_peer_by_id(pid)
         if not peer:

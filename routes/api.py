@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, abort, jsonify, request
 from database import get_all_peers, upsert_traffic_sample, get_peer_daily_traffic, get_total_traffic_bytes
 from wireguard import parse_wg_show, format_bytes, is_peer_active, format_handshake, get_interface_status, WG_INTERFACE
-from routes.auth import login_required
+from routes.auth import client_ip, login_required
 from cache_ext import cache
 from envflags import pihole_enabled
 
@@ -340,10 +340,8 @@ def peer_kill(peer_id):
         pass
     try:
         from database import audit
-        xff = request.headers.get('X-Forwarded-For', '')
-        ip = xff.split(',')[0].strip() if xff else (request.remote_addr or 'unknown')
         audit('peer.kill', target_type='peer', target_id=peer_id,
-              target_name=peer['name'], actor_ip=ip)
+              target_name=peer['name'], actor_ip=client_ip())
     except Exception:
         pass
     return jsonify({'ok': True, 'peer_name': peer['name'], 'peer_id': peer_id})

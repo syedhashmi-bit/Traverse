@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Fake IPs in the audit log.** Sign-in, logout and every peer action
+  recorded the *first* `X-Forwarded-For` entry, which is whatever the browser
+  sends — nginx appends the real address after it. One helper,
+  `routes.auth.client_ip()`, now takes the last entry, and only when the
+  request came from nginx on this box; anything else is recorded at its
+  socket address.
+
 ## [1.16.1] — 2026-10-30 (Palette sign-out, tour on phones, mobile Settings)
 
 ### Fixed
