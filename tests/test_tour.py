@@ -53,3 +53,9 @@ def test_seen_rejects_cross_origin(logged_in_client):
                                  headers={'Origin': 'https://evil.example'})
     assert resp.status_code == 403
     assert AUTOSTART in logged_in_client.get('/').data
+
+
+def test_settings_offers_tour_replay_for_phones(logged_in_client):
+    # The topbar ? is hidden on phones; Settings is in the mobile bottom nav.
+    page = logged_in_client.get('/settings/').data
+    assert b'data-tour-start' in page
