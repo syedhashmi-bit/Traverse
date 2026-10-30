@@ -21,8 +21,14 @@ def create_app():
         )
     app.secret_key = secret
 
+    # Cookies are HTTPS-only, except in "local only" installs, where the
+    # dashboard is reached at http://localhost through an SSH tunnel (the
+    # only plain-http origin google_auth accepts). Safari won't store a
+    # Secure cookie over http://localhost, and the tunnel already encrypts.
+    import google_auth
     app.config.update(
-        SESSION_COOKIE_SECURE=True,
+        SESSION_COOKIE_SECURE=not google_auth.is_loopback_http(
+            os.getenv('TRAVERSE_PUBLIC_URL', '').strip()),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Strict',
         PERMANENT_SESSION_LIFETIME=timedelta(hours=12),

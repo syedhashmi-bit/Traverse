@@ -133,9 +133,9 @@
 - **Python**: 3.10+ (the distro's `python3` is fine; CI tests 3.10 → 3.14)
 - **WireGuard**: `apt install wireguard`
 - **Privileges**: must run as `root` (needs access to `wg`, `wg-quick`, and `systemctl`)
-- **A domain with HTTPS** for the dashboard — Google sign-in won't redirect to a bare IP or plain `http://` (certbot via the installer is fine)
+- **A way to reach the dashboard** — your own domain, *or* a free `sslip.io` hostname the installer makes from the server's IP, *or* nothing at all (local-only via SSH tunnel). See [Choosing how to reach the dashboard](#choosing-how-to-reach-the-dashboard)
 - **A Google account** to create a free OAuth client in Google Cloud Console — see [Google sign-in](#google-sign-in)
-- **Ports**: the WireGuard UDP port (installer default `51820`) and TCP `80`/`443` — open them in your **cloud provider's firewall** too (Hetzner, AWS security groups, Oracle, GCP…), not just on the server
+- **Ports**: the WireGuard UDP port (installer default `51820`), plus TCP `80`/`443` unless you go local-only — open them in your **cloud provider's firewall** too (Hetzner, AWS security groups, Oracle, GCP…), not just on the server
 
 ---
 
@@ -143,15 +143,15 @@
 
 ### Before you start
 
-Three things the installer can't do for you — do them first and the rest is one command:
+A few things the installer can't do for you:
 
-1. **Point a domain at the server.** Add a DNS **A record** (e.g. `vpn.example.com`) with your VPS's public IP and wait until `ping vpn.example.com` shows that IP. Google sign-in needs HTTPS, and HTTPS needs a domain.
-2. **Open the ports in your cloud provider's firewall** — the WireGuard UDP port (default `51820`) plus TCP `80` and `443`. Missing UDP here is the #1 cause of "the VPN app says connected but nothing loads".
-3. **Create a Google OAuth client** — about 5 minutes, see [Google sign-in](#google-sign-in). You can also skip it during install and add it to `.env` afterwards.
+1. **Open the ports in your cloud provider's firewall** — the WireGuard UDP port (default `51820`), plus TCP `80` and `443` unless you'll use local-only mode. Missing UDP here is the #1 cause of "the VPN app says connected but nothing loads".
+2. **If you'll use your own domain:** add a DNS **A record** (e.g. `vpn.example.com`) pointing at the VPS's public IP, and wait until `ping vpn.example.com` shows that IP. (No domain? Pick option 2 or 3 below.)
+3. **Create a Google OAuth client** — about 5 minutes, see [Google sign-in](#google-sign-in). The installer shows the exact redirect URI to register; you can also skip this during install and add it to `.env` afterwards.
 
 ### Quick install (recommended)
 
-On a fresh **Debian/Ubuntu** VPS, one command takes you from clone to a running dashboard:
+On a fresh **Debian/Ubuntu** VPS:
 
 ```bash
 git clone https://github.com/syedhashmi-bit/Traverse.git /var/www/traverse
@@ -159,16 +159,50 @@ cd /var/www/traverse
 sudo ./install.sh
 ```
 
-It installs the dependencies, creates the Python venv, generates the WireGuard server keys + `/etc/wireguard/<interface>.conf` (default `wg0`) (auto-detecting your egress interface), writes `.env` with a freshly generated `SECRET_KEY` (prompting for a domain and your Google sign-in details — see [Google sign-in](#google-sign-in)), installs the systemd service + nginx config, adds a swapfile on small boxes, and — if you give it a domain — obtains a free HTTPS certificate via certbot. It's **safe to re-run** (existing keys / `.env` / WireGuard config are kept).
+The installer is guided. It asks a few questions, shows you the plan, and
+changes nothing until you say yes:
 
-Unattended example:
+```
+How will you open the dashboard?
+  1) My own domain (HTTPS)                    ← recommended
+  2) No domain: free 203-0-113-7.sslip.io hostname (HTTPS)
+  3) Local only: through an SSH tunnel, nothing exposed to the internet
+Google OAuth client ID / secret / allowed emails   (blank = fill in later)
+Install Pi-hole ad-blocking for VPN devices too? [y/N]
+Advanced WireGuard settings? [y/N]                  (No = wg0, 51820/udp, 10.8.0.0/24)
+
+Here's the plan … Go ahead and install? [Y/n]
+```
+
+Then it installs WireGuard, the Python venv, the systemd service, nginx and a
+free HTTPS certificate (options 1–2), and Pi-hole if you asked — and ends by
+printing exactly how to open the dashboard. It's **safe to re-run** (existing
+keys / `.env` / WireGuard config are kept). Want to see the questions first?
+`sudo DRY_RUN=1 ./install.sh` asks everything and changes nothing.
+
+#### Choosing how to reach the dashboard
+
+| | You need | You get |
+|---|---|---|
+| **1. Own domain** | A domain with an A record → the server | `https://vpn.example.com` |
+| **2. sslip.io** | Nothing | `https://203-0-113-7.sslip.io` — a free hostname that always resolves to the IP in its name, with a real Let's Encrypt certificate |
+| **3. Local only** | An SSH client | The dashboard listens only on the server. Open it with `ssh -L 5000:127.0.0.1:5000 root@<server-ip>`, then browse to `http://localhost:5000` (Google allows `localhost`) |
+
+In every mode the **VPN itself** still listens on the server's public IP —
+only the dashboard changes. Switching later means updating
+`TRAVERSE_PUBLIC_URL` in `.env` and the redirect URI on the Google client.
+
+Unattended (every answer can be an env var; with no terminal it never prompts):
 
 ```bash
-sudo DOMAIN=vpn.example.com RUN_CERTBOT=yes \
+sudo ACCESS_MODE=domain DOMAIN=vpn.example.com INSTALL_PIHOLE=yes \
      TRAVERSE_GOOGLE_CLIENT_ID='….apps.googleusercontent.com' \
      TRAVERSE_GOOGLE_CLIENT_SECRET='…' \
      TRAVERSE_ADMIN_EMAILS='you@example.com' ./install.sh
 ```
+
+`ACCESS_MODE` is `domain`, `sslip` or `local` (default: `domain` if `DOMAIN`
+is set, else `local`); see the top of `install.sh` for the rest.
 
 Then open the printed URL, sign in with Google — a short guided tour shows you around — and add your first peer: scan its QR code with the WireGuard app ([iOS](https://apps.apple.com/app/wireguard/id1441195209), [Android](https://play.google.com/store/apps/details?id=com.wireguard.android), [desktop](https://www.wireguard.com/install/)). For ad-blocking, see [Pi-hole](#pi-hole-optional).
 
@@ -463,28 +497,34 @@ Certbot will automatically configure HTTPS and set up auto-renewal.
 ### Pi-hole (optional)
 
 Traverse can show Pi-hole stats and hand VPN devices Pi-hole as their DNS
-for network-wide ad-blocking. Pi-hole v6 is installed separately, on the
-same server:
+for network-wide ad-blocking.
+
+**Easiest:** answer **yes** to "Install Pi-hole ad-blocking too?" in
+`install.sh` — or add it later by re-running it (it keeps your keys and `.env`):
 
 ```bash
-curl -sSL https://install.pi-hole.net | bash        # pick your WireGuard interface (e.g. wg0) when asked
-pihole-FTL --config webserver.port 8088             # nginx already owns port 80
-pihole setpassword 'choose-a-password'
-ufw allow in on wg0 to any port 53                  # only if ufw is active; use your interface name
+sudo INSTALL_PIHOLE=yes ./install.sh
 ```
 
-Then add to `.env` and `systemctl restart traverse`:
+The installer sets Pi-hole v6 up so DNS answers only on the WireGuard
+interface (never an open resolver), its web UI listens on `127.0.0.1:8088`,
+and — with a domain — the admin UI sits behind the Traverse login at
+`/pihole`. It prints the Pi-hole admin password at the end, sets `WG_DNS` to
+the server's VPN IP, and connects the `PIHOLE_*` settings in `.env`.
+
+**By hand** (if Pi-hole is already installed): point its web server at
+`127.0.0.1:8088` (`pihole-FTL --config webserver.port 127.0.0.1:8088`), then
+add to `.env` and `systemctl restart traverse`:
 
 ```bash
 PIHOLE_ENABLED=true
-PIHOLE_URL=http://127.0.0.1:8088                    # FTL API base, no /api
-PIHOLE_PASSWORD=choose-a-password
-PIHOLE_WEB_URL=http://<WG_SERVER_VPN_IP>:8088/admin/ # admin UI, reachable over the VPN
+PIHOLE_URL=http://127.0.0.1:8088     # FTL API base, no /api
+PIHOLE_PASSWORD=<pihole admin password>
+WG_DNS=<WG_SERVER_VPN_IP>            # new peers use Pi-hole for DNS
 ```
 
-New peers then default to the server's VPN IP (where Pi-hole answers) as
-DNS. Existing peers keep their DNS until you change it on the peer's page
-and re-download / re-scan the config.
+New peers then default to Pi-hole as DNS. Existing peers keep their DNS until
+you change it on the peer's page and re-download / re-scan the config.
 
 ### Telegram Alerts
 
