@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+## [1.16.0] — 2026-10-30 (Guided installer: no domain needed)
+
+### Added
+- **`install.sh` is now guided.** It asks how you'll open the dashboard,
+  whether to add Pi-hole, and WireGuard details only if you want them; shows
+  the plan and changes nothing until you confirm. `DRY_RUN=1` asks the
+  questions and stops.
+- **No domain required.** Three access modes (`ACCESS_MODE`):
+  `domain` (your own, HTTPS), `sslip` (a free `<ip>.sslip.io` hostname with a
+  Let's Encrypt certificate) and `local` (dashboard bound to 127.0.0.1, opened
+  through `ssh -L 5000:127.0.0.1:5000`; no nginx, nothing exposed).
+- **Pi-hole from the installer** (`INSTALL_PIHOLE=yes`): unattended Pi-hole
+  v6 install seeded so DNS answers only on the WireGuard interface and the UI
+  listens on loopback, admin UI proxied behind the Traverse login at
+  `/pihole` (template block in `deploy/nginx.conf`), `.env` + `WG_DNS` wired
+  up, admin password printed at the end.
+
+### Changed
+- Session cookies drop the `Secure` flag only when `TRAVERSE_PUBLIC_URL` is
+  `http://localhost` / `http://127.0.0.1` (local-only installs; Safari won't
+  keep a Secure cookie there and the SSH tunnel already encrypts).
+
+### Fixed
+- `TRAVERSE_PUBLIC_URL` validation matched loopback by prefix, so
+  `http://localhost.evil.example` passed. Now compares the parsed hostname
+  (`google_auth.is_loopback_http`).
+
 ## [1.15.1] — 2026-10-29 (Fresh-install fixes)
 
 ### Fixed

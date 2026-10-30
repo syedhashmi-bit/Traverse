@@ -69,6 +69,17 @@ def config():
     }
 
 
+def is_loopback_http(url):
+    """True for a plain-http URL whose host is this machine — the one
+    non-https origin allowed: "local only" installs reached through an SSH
+    tunnel (Google also accepts http redirect URIs only for loopback)."""
+    try:
+        u = urllib.parse.urlsplit(url or '')
+    except ValueError:
+        return False
+    return u.scheme.lower() == 'http' and u.hostname in ('localhost', '127.0.0.1')
+
+
 def config_problems():
     """Everything that stops sign-in from working, as human-readable lines.
     Empty list == ready."""
@@ -80,7 +91,7 @@ def config_problems():
         problems.append('TRAVERSE_GOOGLE_CLIENT_SECRET is unset')
     if not c['admins']:
         problems.append('TRAVERSE_ADMIN_EMAILS is empty — nobody could sign in')
-    if not c['public_url'].startswith(('https://', 'http://localhost', 'http://127.0.0.1')):
+    if not (c['public_url'].startswith('https://') or is_loopback_http(c['public_url'])):
         problems.append('TRAVERSE_PUBLIC_URL must be the https:// origin browsers use '
                         '(e.g. https://vpn.example.com)')
     return problems
