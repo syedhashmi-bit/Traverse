@@ -5,6 +5,12 @@ import pytest
 
 
 def _cookie_secure(monkeypatch, public_url):
+    # Build the app the way conftest's `app` fixture does (no alert poller
+    # thread, no wg CLI), just with this test's env in place first.
+    import alerts
+    from tests.conftest import _stub_wg
+    monkeypatch.setattr(alerts, 'start_alerts', lambda: None)
+    _stub_wg(monkeypatch)
     monkeypatch.setenv('TRAVERSE_PUBLIC_URL', public_url)
     from app import create_app
     return create_app().config['SESSION_COOKIE_SECURE']
