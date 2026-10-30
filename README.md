@@ -33,7 +33,7 @@
 - **Config download & inline QR** — `.conf` files plus an embedded QR you can scan on the spot
 - **Peer expiry** — set `expires_at`; expired peers are auto-disabled
 - **Per-peer notes, device type, and location history**
-- **Kill button** — force-disconnect a peer from `wg1` and disable in one click
+- **Kill button** — force-disconnect a peer from the WireGuard interface and disable it in one click
 - **Sortable / filterable peer table** — 10 sortable columns, filter chips for tunnel × status × device, combinable text search
 - **Bulk actions** — multi-select with master checkbox, then bulk Disable/Enable/Delete
 
@@ -47,7 +47,8 @@
 - **Topology view** — radial canvas diagram with animated dashed lines on active peers and a slow-rotating server ring
 
 ### Pi-hole integration (v6 API)
-- DNS-level ad blocking for every VPN client (Pi-hole listens on `10.9.0.1:53` over WireGuard)
+- DNS-level ad blocking for every VPN client (Pi-hole answers on the server's VPN IP, over WireGuard only)
+- Optional one-question install from `install.sh`; admin UI proxied behind the Traverse login at `/pihole`
 - Live blocked-count, rate, blocklist size, query count, and client count on the dashboard
 - Top-blocked-domains widget (5-min refresh)
 - Per-peer DNS query log on the peer detail page
@@ -59,6 +60,7 @@
 - **Browser push + sound alerts** — opt-in; Web Audio tones on connect/disconnect
 
 ### Quality-of-life
+- **First-run guided tour** — a spotlight walk-through the first time each Google account signs in; skippable, and replayable from the **?** help panel
 - **Toast notifications** for fetch-driven actions
 - **Styled confirm modal** replacing every native `confirm()` dialog
 - **Top loading bar** during navigation / fetch activity
@@ -78,6 +80,7 @@
 - **`prefers-reduced-motion: reduce`** — fully respected; collapses every animation and the cross-fade interceptor bails out at the JS layer too
 
 ### Operations
+- **Guided installer** — `install.sh` asks how you'll reach the dashboard (own domain, free sslip.io hostname, or local-only over SSH), optionally adds Pi-hole, shows the plan and confirms before changing anything
 - **Port forwarding** — DNAT iptables rules at `/port-forwards/`; persisted to `/etc/iptables/rules.v4`
 - **System log viewer** at `/logs` (live tail with filter for traverse + WireGuard)
 - **Backup/restore** — JSON export of all peers/events (private keys stripped)
@@ -111,7 +114,7 @@
 
 | Layer | Technology |
 |-------|-----------|
-| Runtime | Python 3.12 |
+| Runtime | Python 3.10+ (production runs 3.14) |
 | Framework | Flask 3.1 (Blueprints) |
 | Database | SQLite (WAL mode) via stdlib `sqlite3` — no ORM |
 | Caching | Flask-Caching (SimpleCache) |
@@ -252,8 +255,8 @@ nano /etc/wireguard/wg1.conf
 Address    = 10.9.0.1/24
 ListenPort = 51821
 PrivateKey = <contents of /etc/wireguard/server_private.key>
-PostUp     = iptables -t nat -A POSTROUTING -s 10.9.0.0/24 -o eth0 -j MASQUERADE
-PostDown   = iptables -t nat -D POSTROUTING -s 10.9.0.0/24 -o eth0 -j MASQUERADE
+PostUp     = iptables -A FORWARD -i wg1 -j ACCEPT; iptables -A FORWARD -o wg1 -j ACCEPT; iptables -t nat -A POSTROUTING -s 10.9.0.0/24 -o eth0 -j MASQUERADE
+PostDown   = iptables -D FORWARD -i wg1 -j ACCEPT; iptables -D FORWARD -o wg1 -j ACCEPT; iptables -t nat -D POSTROUTING -s 10.9.0.0/24 -o eth0 -j MASQUERADE
 ```
 
 > Replace `eth0` with your actual outbound network interface (`ip route | grep default` shows it).
@@ -388,107 +391,29 @@ Open `http://localhost:5000` and sign in with Google (for local dev, set `TRAVER
 
 ### Production (systemd + gunicorn + nginx)
 
-**a) Create the log directory**
+`install.sh` does all of this. By hand, use the same templates it renders
+from `deploy/`:
 
 ```bash
 mkdir -p /var/log/traverse
-```
 
-**b) Create the systemd service**
+# systemd unit — __PROJECT_DIR__ is the repo path
+sed "s|__PROJECT_DIR__|/var/www/traverse|g" deploy/traverse.service > /etc/systemd/system/traverse.service
+systemctl daemon-reload && systemctl enable --now traverse
 
-```bash
-nano /etc/systemd/system/traverse.service
-```
-
-```ini
-[Unit]
-Description=Traverse WireGuard VPN Dashboard
-After=network.target
-
-[Service]
-Type=notify
-User=root
-Group=root
-WorkingDirectory=/var/www/traverse
-EnvironmentFile=/var/www/traverse/.env
-ExecStart=/var/www/traverse/venv/bin/gunicorn \
-    --workers 2 \
-    --bind 127.0.0.1:5000 \
-    --timeout 60 \
-    --access-logfile /var/log/traverse/access.log \
-    --error-logfile /var/log/traverse/error.log \
-    --capture-output \
-    "app:create_app()"
-ExecReload=/bin/kill -s HUP $MAINPID
-KillMode=mixed
-TimeoutStopSec=5
-PrivateTmp=true
-Restart=on-failure
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-systemctl daemon-reload
-systemctl enable --now traverse
-systemctl status traverse
-```
-
-**c) Configure nginx**
-
-```bash
-nano /etc/nginx/sites-available/traverse
-```
-
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    location /.well-known/acme-challenge/ {
-        root /var/www/html;
-    }
-
-    location / {
-        return 301 https://$host$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl;
-    server_name your-domain.com;
-
-    ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
-
-    location / {
-        proxy_pass            http://127.0.0.1:5000;
-        proxy_set_header      Host              $host;
-        proxy_set_header      X-Real-IP         $remote_addr;
-        proxy_set_header      X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header      X-Forwarded-Proto $scheme;
-        proxy_read_timeout    60s;
-        proxy_connect_timeout 10s;
-        proxy_buffering       off;
-    }
-}
-```
-
-```bash
+# nginx site — __DOMAIN__ is your domain; drop the optional Pi-hole block
+sed -e "s|__DOMAIN__|vpn.example.com|g" -e '/__PIHOLE_BEGIN__/,/__PIHOLE_END__/d' \
+    deploy/nginx.conf > /etc/nginx/sites-available/traverse
 ln -sf /etc/nginx/sites-available/traverse /etc/nginx/sites-enabled/traverse
 nginx -t && systemctl reload nginx
-```
 
-**d) Issue a free SSL certificate with Certbot**
-
-```bash
+# free HTTPS certificate (also sets up the http → https redirect and renewal)
 apt install -y certbot python3-certbot-nginx
-certbot --nginx -d your-domain.com
+certbot --nginx -d vpn.example.com
 ```
 
-Certbot will automatically configure HTTPS and set up auto-renewal.
+gunicorn runs **2 workers** on `127.0.0.1:5000`; nginx serves `/static/`
+with a 7-day `immutable` cache (static URLs carry `?v=<VERSION>`).
 
 ---
 
@@ -636,6 +561,7 @@ traverse/
 ├── notifications.py        # send_notification() + Email/Telegram/Discord senders
 ├── schedules.py            # Per-peer allowed-time window helpers
 ├── google_auth.py          # Google OIDC: PKCE flow, ID-token checks, email allowlist
+├── envflags.py             # One parser for boolean env flags (PIHOLE_ENABLED=false means off)
 ├── routes/
 │   ├── auth.py             # /login, Google sign-in + callback, logout, login_required
 │   ├── dashboard.py        # GET / — NOC dashboard
@@ -671,8 +597,8 @@ traverse/
 │   ├── manifest.json       # PWA Web App Manifest
 │   ├── sw.js               # Service worker (network-first, /api/* always fresh)
 │   └── favicon.ico
-├── install.sh              # One-command Debian/Ubuntu installer
-├── deploy/                 # systemd unit + nginx templates used by install.sh
+├── install.sh              # Guided Debian/Ubuntu installer (DRY_RUN=1 to preview)
+├── deploy/                 # systemd unit + nginx template (incl. optional /pihole proxy) used by install.sh
 ├── tests/                  # pytest suite (wg stubbed, Google faked)
 ├── .env.example            # Environment variable template (safe to commit)
 ├── requirements.txt        # Python dependencies
@@ -691,7 +617,7 @@ traverse/
 - **Preshared keys** are written to a temp file during `wg set` to keep them off the process argument list
 - **Google-only sign-in** — no password exists to phish, leak or brute-force. The OIDC code flow uses PKCE (S256), a `state` bound to the browser by a signed, path-scoped cookie (stops login CSRF), and a `nonce` bound into the ID token; the ID token's RS256 signature is checked against Google's published keys along with audience, issuer, expiry and `email_verified`
 - **Email allowlist re-checked on every request** — removing an address from `TRAVERSE_ADMIN_EMAILS` and restarting ends its sessions immediately
-- **Session cookie** is `Secure`, `HttpOnly`, `SameSite=Strict` and expires after 12 h. Because a Strict cookie is withheld on a redirect chain that started on accounts.google.com, the callback answers with a tiny self-navigating page instead of a 302
+- **Session cookie** is `Secure`, `HttpOnly`, `SameSite=Strict` and expires after 12 h (`Secure` is dropped only for local-only installs, where `TRAVERSE_PUBLIC_URL` is `http://localhost` behind an SSH tunnel). Because a Strict cookie is withheld on a redirect chain that started on accounts.google.com, the callback answers with a tiny self-navigating page instead of a 302
 - **Secrets in `.env` only** — no credentials in code or the database
 - **Peer cap** — `MAX_PEERS` env var (default 20, clamped to 1–50, read in `wireguard.py`), enforced server-side on every create path
 - **CSRF** — the `SameSite=Strict` session cookie plus an Origin/Referer host check on every POST/PUT/PATCH/DELETE. No per-form tokens; every allowlisted account is a full admin
