@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [1.16.1] — 2026-10-30 (Palette sign-out, tour on phones, mobile Settings)
+
+### Fixed
+- **Command palette "Sign Out" did nothing** — it navigated to `/logout`,
+  which only accepts POST. It now submits the topbar's Sign Out form.
+- **The tour couldn't be replayed on phones** (the topbar **?** is hidden
+  there). Settings — in the mobile bottom nav — has a "Getting started" card
+  with **Take the guided tour**, and the palette gained the same command.
+- **Settings and peer detail overflowed sideways on phones.** The one-column
+  `.detail-grid` sized itself to the longest `<pre>` line (~1000px), pushing
+  every card off-screen; columns may now shrink and wide blocks scroll inside
+  their own box.
+
 ## [1.16.0] — 2026-10-30 (Guided installer: no domain needed)
 
 ### Added

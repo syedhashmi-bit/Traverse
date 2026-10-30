@@ -608,7 +608,10 @@ document.addEventListener('DOMContentLoaded', () => {
     { id: 'goto-about',     label: 'About / Changelog',   icon: 'ℹ', url: '/about',            hint: ''    },
     { id: 'theme-toggle',   label: 'Toggle Theme',        icon: '☼', action: () => document.getElementById('theme-toggle')?.click(), hint: '' },
     { id: 'help',           label: 'Show Help',           icon: '?', action: () => document.getElementById('help-toggle')?.click(), hint: '?' },
-    { id: 'logout',         label: 'Sign Out',            icon: '⎋', url: '/logout',           hint: ''    },
+    { id: 'tour',           label: 'Take the Guided Tour', icon: '▶', action: () => window.tvTour && window.tvTour.start(), hint: '' },
+    // /logout is POST-only (a GET link would let any page sign you out), so
+    // submit the topbar's Sign Out form rather than navigating to it.
+    { id: 'logout',         label: 'Sign Out',            icon: '⎋', action: () => document.querySelector('form[action$="/logout"]')?.submit(), hint: '' },
   ];
 
   function ensureOverlay() {
@@ -926,7 +929,7 @@ document.addEventListener('DOMContentLoaded', () => {
     { target: 'settings', title: 'Settings',
       body: 'Who’s allowed to sign in, backups, and server details.' },
     { target: 'help', title: 'Help is always here',
-      body: 'Click <b>?</b> (or press <kbd>?</kbd>) for tips, keyboard shortcuts — and to replay this tour any time. <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd> jumps anywhere.' },
+      body: 'Click <b>?</b> (or press <kbd>?</kbd>) for tips, keyboard shortcuts — and to replay this tour any time. On a phone, the tour is under <b>Settings</b>. <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>K</kbd> jumps anywhere.' },
   ];
   const PAD = 6;      // spotlight padding around the target
   const GAP = 12;     // space between target and popover
@@ -1070,6 +1073,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   window.tvTour = { start, end };
+
+  // Any [data-tour-start] element (e.g. the Settings "Getting started" card,
+  // which phones can reach) replays the tour.
+  document.addEventListener('click', e => {
+    if (e.target.closest && e.target.closest('[data-tour-start]')) start();
+  });
 
   document.addEventListener('DOMContentLoaded', () => {
     if (document.body.dataset.tourAutostart !== '1') return;

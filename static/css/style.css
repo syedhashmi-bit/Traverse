@@ -4072,3 +4072,11 @@ body.theme-light .tour-centered .tour-blocker { background: rgba(15, 23, 42, 0.4
 @media (prefers-reduced-motion: reduce) {
   .tour-root, .tour-spot, .tour-pop { transition: none; }
 }
+
+/* ── detail-grid: let columns shrink below their content ─────────────── */
+/* Grid items default to min-width:auto, so one long unbroken line (the
+   `wg show` / server-config <pre> blocks on Settings) stretched the single
+   mobile column to ~1000px and pushed every card off-screen. min-width:0
+   lets the column honour 1fr; wide <pre>s scroll inside their own box. */
+.detail-grid > * { min-width: 0; }
+.detail-grid pre { max-width: 100%; overflow-x: auto; }
